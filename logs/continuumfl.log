@@ -1,0 +1,172 @@
+2025-08-26 13:56:06,203 - ContinuumFL - ERROR - Training failed: result type Float can't be cast to the desired output type Long
+2025-08-26 13:57:56,682 - ContinuumFL - INFO - ContinuumFL Coordinator initialized
+2025-08-26 13:57:56,682 - ContinuumFL - INFO - Initializing ContinuumFL system...
+2025-08-26 13:57:56,683 - ContinuumFL - INFO - Using CPU for computation
+2025-08-26 13:57:56,683 - ContinuumFL - INFO - Preparing dataset...
+2025-08-26 13:57:57,709 - ContinuumFL - INFO - Creating global model...
+2025-08-26 13:57:57,771 - ContinuumFL - INFO - Model will use CPU
+2025-08-26 13:57:57,785 - ContinuumFL - INFO - Model: {'model_type': 'ResNet18', 'total_parameters': 11220132, 'trainable_parameters': 11220132, 'model_size_mb': 42.80140686035156, 'layers': 63}
+2025-08-26 13:57:57,786 - ContinuumFL - INFO - Creating edge devices...
+2025-08-26 13:57:57,786 - ContinuumFL - INFO - Created 10 edge devices
+2025-08-26 13:57:57,786 - ContinuumFL - INFO - Performing initial zone discovery...
+2025-08-26 13:57:57,787 - ContinuumFL - INFO - Distributing data to devices...
+2025-08-26 13:57:57,801 - ContinuumFL - INFO - Data distribution: {'total_devices': 10, 'device_stats': {'device_1': {'train_samples': 14, 'test_samples': 71, 'total_samples': 85, 'zone': '1'}, 'device_2': {'train_samples': 54, 'test_samples': 293, 'total_samples': 347, 'zone': '2'}, 'device_3': {'train_samples': 34, 'test_samples': 145, 'total_samples': 179, 'zone': '3'}, 'device_6': {'train_samples': 49, 'test_samples': 261, 'total_samples': 310, 'zone': '6'}, 'device_4': {'train_samples': 68, 'test_samples': 174, 'total_samples': 242, 'zone': '4'}, 'device_0': {'train_samples': 39, 'test_samples': 253, 'total_samples': 292, 'zone': '0'}, 'device_8': {'train_samples': 25, 'test_samples': 200, 'total_samples': 225, 'zone': '8'}, 'device_9': {'train_samples': 39, 'test_samples': 100, 'total_samples': 139, 'zone': '9'}, 'device_7': {'train_samples': 30, 'test_samples': 132, 'total_samples': 162, 'zone': '7'}, 'device_5': {'train_samples': 24, 'test_samples': 123, 'total_samples': 147, 'zone': '5'}}, 'zone_stats': defaultdict(<function FederatedDataset.analyze_data_distribution.<locals>.<lambda> at 0x000001F8BAFC85E0>, {'1': {'devices': 1, 'total_samples': 85, 'class_distribution': defaultdict(<class 'int'>, {1: 3, 39: 4, 55: 6, 65: 1})}, '2': {'devices': 1, 'total_samples': 347, 'class_distribution': defaultdict(<class 'int'>, {10: 1, 25: 2, 28: 4, 39: 6, 55: 3, 57: 1, 59: 1, 65: 1, 79: 2, 86: 1, 90: 12, 94: 20})}, '3': {'devices': 1, 'total_samples': 179, 'class_distribution': defaultdict(<class 'int'>, {10: 1, 28: 4, 36: 6, 55: 2, 57: 2, 65: 2, 80: 1, 86: 5, 87: 6, 92: 4, 99: 1})}, '6': {'devices': 1, 'total_samples': 310, 'class_distribution': defaultdict(<class 'int'>, {10: 1, 14: 1, 36: 1, 39: 2, 55: 3, 59: 1, 65: 2, 79: 1, 80: 3, 90: 31, 92: 1, 98: 2})}, '4': {'devices': 1, 'total_samples': 242, 'class_distribution': defaultdict(<class 'int'>, {17: 2, 25: 3, 27: 1, 36: 10, 39: 7, 55: 3, 62: 7, 65: 1, 79: 16, 86: 8, 87: 1, 90: 2, 98: 7})}, '0': {'devices': 1, 'total_samples': 292, 'class_distribution': defaultdict(<class 'int'>, {1: 1, 25: 1, 27: 2, 28: 2, 39: 2, 79: 23, 80: 3, 81: 1, 86: 1, 90: 2, 94: 1})}, '8': {'devices': 1, 'total_samples': 225, 'class_distribution': defaultdict(<class 'int'>, {14: 4, 25: 1, 28: 1, 36: 2, 59: 1, 62: 1, 79: 4, 80: 4, 87: 4, 90: 2, 98: 1})}, '9': {'devices': 1, 'total_samples': 139, 'class_distribution': defaultdict(<class 'int'>, {25: 1, 27: 1, 28: 1, 32: 1, 36: 11, 55: 1, 57: 1, 65: 1, 79: 11, 80: 1, 81: 1, 98: 8})}, '7': {'devices': 1, 'total_samples': 162, 'class_distribution': defaultdict(<class 'int'>, {14: 1, 25: 1, 36: 1, 62: 6, 79: 4, 80: 2, 86: 10, 90: 1, 92: 2, 94: 1, 98: 1})}, '5': {'devices': 1, 'total_samples': 147, 'class_distribution': defaultdict(<class 'int'>, {14: 1, 28: 3, 39: 6, 57: 1, 62: 1, 79: 3, 86: 1, 90: 7, 98: 1})}})}
+2025-08-26 13:57:57,801 - ContinuumFL - INFO - Setting up device models...
+2025-08-26 13:57:58,513 - ContinuumFL - INFO - ContinuumFL system initialization complete
+2025-08-26 13:57:58,514 - ContinuumFL - INFO - System: 10 devices, 1 zones, Device: cpu
+2025-08-26 13:57:58,514 - ContinuumFL - INFO - Starting federated learning for 5 rounds
+2025-08-26 13:57:58,514 - ContinuumFL - INFO - 
+=== Round 1/5 ===
+2025-08-26 13:58:02,088 - ContinuumFL - INFO - Local training completed: 7/7 devices
+2025-08-26 13:58:02,094 - ContinuumFL - ERROR - Training failed: result type Float can't be cast to the desired output type Long
+2025-08-26 13:58:48,173 - ContinuumFL - INFO - ContinuumFL Coordinator initialized
+2025-08-26 13:59:59,457 - ContinuumFL - INFO - ContinuumFL Coordinator initialized
+2025-08-26 14:01:51,277 - ContinuumFL - INFO - ContinuumFL Coordinator initialized
+2025-08-26 14:01:59,988 - ContinuumFL - INFO - ContinuumFL Coordinator initialized
+2025-08-26 14:01:59,989 - ContinuumFL - INFO - Initializing ContinuumFL system...
+2025-08-26 14:01:59,989 - ContinuumFL - INFO - Using CPU for computation
+2025-08-26 14:01:59,989 - ContinuumFL - INFO - Preparing dataset...
+2025-08-26 14:02:01,031 - ContinuumFL - INFO - Creating global model...
+2025-08-26 14:02:01,093 - ContinuumFL - INFO - Model will use CPU
+2025-08-26 14:02:01,106 - ContinuumFL - INFO - Model: {'model_type': 'ResNet18', 'total_parameters': 11220132, 'trainable_parameters': 11220132, 'model_size_mb': 42.80140686035156, 'layers': 63}
+2025-08-26 14:02:01,106 - ContinuumFL - INFO - Creating edge devices...
+2025-08-26 14:02:01,106 - ContinuumFL - INFO - Created 10 edge devices
+2025-08-26 14:02:01,106 - ContinuumFL - INFO - Performing initial zone discovery...
+2025-08-26 14:02:01,107 - ContinuumFL - INFO - Distributing data to devices...
+2025-08-26 14:02:01,121 - ContinuumFL - INFO - Data distribution: {'total_devices': 10, 'device_stats': {'device_4': {'train_samples': 14, 'test_samples': 71, 'total_samples': 85, 'zone': '4'}, 'device_7': {'train_samples': 54, 'test_samples': 293, 'total_samples': 347, 'zone': '7'}, 'device_6': {'train_samples': 34, 'test_samples': 145, 'total_samples': 179, 'zone': '6'}, 'device_0': {'train_samples': 49, 'test_samples': 261, 'total_samples': 310, 'zone': '0'}, 'device_9': {'train_samples': 68, 'test_samples': 174, 'total_samples': 242, 'zone': '9'}, 'device_5': {'train_samples': 39, 'test_samples': 253, 'total_samples': 292, 'zone': '5'}, 'device_3': {'train_samples': 25, 'test_samples': 200, 'total_samples': 225, 'zone': '3'}, 'device_8': {'train_samples': 39, 'test_samples': 100, 'total_samples': 139, 'zone': '8'}, 'device_2': {'train_samples': 30, 'test_samples': 132, 'total_samples': 162, 'zone': '2'}, 'device_1': {'train_samples': 24, 'test_samples': 123, 'total_samples': 147, 'zone': '1'}}, 'zone_stats': defaultdict(<function FederatedDataset.analyze_data_distribution.<locals>.<lambda> at 0x0000015B3A0C85E0>, {'4': {'devices': 1, 'total_samples': 85, 'class_distribution': defaultdict(<class 'int'>, {1: 3, 39: 4, 55: 6, 65: 1})}, '7': {'devices': 1, 'total_samples': 347, 'class_distribution': defaultdict(<class 'int'>, {10: 1, 25: 2, 28: 4, 39: 6, 55: 3, 57: 1, 59: 1, 65: 1, 79: 2, 86: 1, 90: 12, 94: 20})}, '6': {'devices': 1, 'total_samples': 179, 'class_distribution': defaultdict(<class 'int'>, {10: 1, 28: 4, 36: 6, 55: 2, 57: 2, 65: 2, 80: 1, 86: 5, 87: 6, 92: 4, 99: 1})}, '0': {'devices': 1, 'total_samples': 310, 'class_distribution': defaultdict(<class 'int'>, {10: 1, 14: 1, 36: 1, 39: 2, 55: 3, 59: 1, 65: 2, 79: 1, 80: 3, 90: 31, 92: 1, 98: 2})}, '9': {'devices': 1, 'total_samples': 242, 'class_distribution': defaultdict(<class 'int'>, {17: 2, 25: 3, 27: 1, 36: 10, 39: 7, 55: 3, 62: 7, 65: 1, 79: 16, 86: 8, 87: 1, 90: 2, 98: 7})}, '5': {'devices': 1, 'total_samples': 292, 'class_distribution': defaultdict(<class 'int'>, {1: 1, 25: 1, 27: 2, 28: 2, 39: 2, 79: 23, 80: 3, 81: 1, 86: 1, 90: 2, 94: 1})}, '3': {'devices': 1, 'total_samples': 225, 'class_distribution': defaultdict(<class 'int'>, {14: 4, 25: 1, 28: 1, 36: 2, 59: 1, 62: 1, 79: 4, 80: 4, 87: 4, 90: 2, 98: 1})}, '8': {'devices': 1, 'total_samples': 139, 'class_distribution': defaultdict(<class 'int'>, {25: 1, 27: 1, 28: 1, 32: 1, 36: 11, 55: 1, 57: 1, 65: 1, 79: 11, 80: 1, 81: 1, 98: 8})}, '2': {'devices': 1, 'total_samples': 162, 'class_distribution': defaultdict(<class 'int'>, {14: 1, 25: 1, 36: 1, 62: 6, 79: 4, 80: 2, 86: 10, 90: 1, 92: 2, 94: 1, 98: 1})}, '1': {'devices': 1, 'total_samples': 147, 'class_distribution': defaultdict(<class 'int'>, {14: 1, 28: 3, 39: 6, 57: 1, 62: 1, 79: 3, 86: 1, 90: 7, 98: 1})}})}
+2025-08-26 14:02:01,121 - ContinuumFL - INFO - Setting up device models...
+2025-08-26 14:02:01,837 - ContinuumFL - INFO - ContinuumFL system initialization complete
+2025-08-26 14:02:01,837 - ContinuumFL - INFO - System: 10 devices, 1 zones, Device: cpu
+2025-08-26 14:02:01,837 - ContinuumFL - INFO - Starting federated learning for 5 rounds
+2025-08-26 14:02:01,837 - ContinuumFL - INFO - 
+=== Round 1/5 ===
+2025-08-26 14:02:04,835 - ContinuumFL - INFO - Local training completed: 7/7 devices
+2025-08-26 14:02:04,840 - ContinuumFL - ERROR - Training failed: result type Float can't be cast to the desired output type Long
+2025-08-26 14:03:09,346 - ContinuumFL - INFO - ContinuumFL Coordinator initialized
+2025-08-26 14:03:09,346 - ContinuumFL - INFO - Initializing ContinuumFL system...
+2025-08-26 14:03:09,346 - ContinuumFL - INFO - Using CPU for computation
+2025-08-26 14:03:09,346 - ContinuumFL - INFO - Preparing dataset...
+2025-08-26 14:03:10,382 - ContinuumFL - INFO - Creating global model...
+2025-08-26 14:03:10,450 - ContinuumFL - INFO - Model will use CPU
+2025-08-26 14:03:10,465 - ContinuumFL - INFO - Model: {'model_type': 'ResNet18', 'total_parameters': 11220132, 'trainable_parameters': 11220132, 'model_size_mb': 42.80140686035156, 'layers': 63}
+2025-08-26 14:03:10,465 - ContinuumFL - INFO - Creating edge devices...
+2025-08-26 14:03:10,465 - ContinuumFL - INFO - Created 5 edge devices
+2025-08-26 14:03:10,466 - ContinuumFL - INFO - Performing initial zone discovery...
+2025-08-26 14:03:10,466 - ContinuumFL - INFO - Distributing data to devices...
+2025-08-26 14:03:10,478 - ContinuumFL - INFO - Data distribution: {'total_devices': 5, 'device_stats': {'device_1': {'train_samples': 55, 'test_samples': 216, 'total_samples': 271, 'zone': '1'}, 'device_0': {'train_samples': 59, 'test_samples': 133, 'total_samples': 192, 'zone': '0'}, 'device_2': {'train_samples': 122, 'test_samples': 341, 'total_samples': 463, 'zone': '2'}, 'device_4': {'train_samples': 101, 'test_samples': 449, 'total_samples': 550, 'zone': '4'}, 'device_3': {'train_samples': 39, 'test_samples': 153, 'total_samples': 192, 'zone': '3'}}, 'zone_stats': defaultdict(<function FederatedDataset.analyze_data_distribution.<locals>.<lambda> at 0x000001F739C07F60>, {'1': {'devices': 1, 'total_samples': 271, 'class_distribution': defaultdict(<class 'int'>, {2: 10, 10: 3, 11: 7, 29: 4, 32: 3, 40: 1, 42: 2, 43: 1, 51: 1, 54: 15, 72: 3, 74: 1, 94: 4})}, '0': {'devices': 1, 'total_samples': 192, 'class_distribution': defaultdict(<class 'int'>, {2: 2, 10: 5, 20: 1, 29: 3, 40: 7, 43: 4, 44: 3, 54: 4, 70: 15, 72: 8, 94: 3, 95: 1, 96: 3})}, '2': {'devices': 1, 'total_samples': 463, 'class_distribution': defaultdict(<class 'int'>, {2: 12, 10: 6, 11: 17, 20: 5, 23: 2, 25: 5, 29: 13, 40: 6, 70: 4, 72: 4, 94: 31, 95: 17})}, '4': {'devices': 1, 'total_samples': 550, 'class_distribution': defaultdict(<class 'int'>, {2: 17, 10: 35, 11: 5, 16: 1, 20: 1, 25: 1, 40: 3, 43: 5, 51: 1, 54: 3, 70: 6, 72: 1, 74: 3, 80: 2, 94: 6, 95: 9, 96: 2})}, '3': {'devices': 1, 'total_samples': 192, 'class_distribution': defaultdict(<class 'int'>, {2: 2, 10: 11, 11: 2, 20: 2, 29: 1, 42: 2, 47: 1, 51: 3, 72: 5, 77: 5, 90: 1, 94: 4})}})}
+2025-08-26 14:03:10,478 - ContinuumFL - INFO - Setting up device models...
+2025-08-26 14:03:10,846 - ContinuumFL - INFO - ContinuumFL system initialization complete
+2025-08-26 14:03:10,846 - ContinuumFL - INFO - System: 5 devices, 1 zones, Device: cpu
+2025-08-26 14:03:10,847 - ContinuumFL - INFO - Starting federated learning for 1 rounds
+2025-08-26 14:03:10,847 - ContinuumFL - INFO - 
+=== Round 1/1 ===
+2025-08-26 14:03:15,195 - ContinuumFL - INFO - Local training completed: 3/3 devices
+2025-08-26 14:03:15,207 - ContinuumFL - ERROR - Training failed: result type Float can't be cast to the desired output type Long
+2025-08-26 14:04:14,258 - ContinuumFL - INFO - ContinuumFL Coordinator initialized
+2025-08-26 14:04:23,945 - ContinuumFL - INFO - ContinuumFL Coordinator initialized
+2025-08-26 14:04:23,946 - ContinuumFL - INFO - Initializing ContinuumFL system...
+2025-08-26 14:04:23,946 - ContinuumFL - INFO - Using CPU for computation
+2025-08-26 14:04:23,947 - ContinuumFL - INFO - Preparing dataset...
+2025-08-26 14:04:24,999 - ContinuumFL - INFO - Creating global model...
+2025-08-26 14:04:25,068 - ContinuumFL - INFO - Model will use CPU
+2025-08-26 14:04:25,082 - ContinuumFL - INFO - Model: {'model_type': 'ResNet18', 'total_parameters': 11220132, 'trainable_parameters': 11220132, 'model_size_mb': 42.80140686035156, 'layers': 63}
+2025-08-26 14:04:25,082 - ContinuumFL - INFO - Creating edge devices...
+2025-08-26 14:04:25,082 - ContinuumFL - INFO - Created 5 edge devices
+2025-08-26 14:04:25,083 - ContinuumFL - INFO - Performing initial zone discovery...
+2025-08-26 14:04:25,083 - ContinuumFL - INFO - Distributing data to devices...
+2025-08-26 14:04:25,095 - ContinuumFL - INFO - Data distribution: {'total_devices': 5, 'device_stats': {'device_0': {'train_samples': 55, 'test_samples': 216, 'total_samples': 271, 'zone': '0'}, 'device_3': {'train_samples': 59, 'test_samples': 133, 'total_samples': 192, 'zone': '3'}, 'device_1': {'train_samples': 122, 'test_samples': 341, 'total_samples': 463, 'zone': '1'}, 'device_2': {'train_samples': 101, 'test_samples': 449, 'total_samples': 550, 'zone': '2'}, 'device_4': {'train_samples': 39, 'test_samples': 153, 'total_samples': 192, 'zone': '4'}}, 'zone_stats': defaultdict(<function FederatedDataset.analyze_data_distribution.<locals>.<lambda> at 0x000001F968E07F60>, {'0': {'devices': 1, 'total_samples': 271, 'class_distribution': defaultdict(<class 'int'>, {2: 10, 10: 3, 11: 7, 29: 4, 32: 3, 40: 1, 42: 2, 43: 1, 51: 1, 54: 15, 72: 3, 74: 1, 94: 4})}, '3': {'devices': 1, 'total_samples': 192, 'class_distribution': defaultdict(<class 'int'>, {2: 2, 10: 5, 20: 1, 29: 3, 40: 7, 43: 4, 44: 3, 54: 4, 70: 15, 72: 8, 94: 3, 95: 1, 96: 3})}, '1': {'devices': 1, 'total_samples': 463, 'class_distribution': defaultdict(<class 'int'>, {2: 12, 10: 6, 11: 17, 20: 5, 23: 2, 25: 5, 29: 13, 40: 6, 70: 4, 72: 4, 94: 31, 95: 17})}, '2': {'devices': 1, 'total_samples': 550, 'class_distribution': defaultdict(<class 'int'>, {2: 17, 10: 35, 11: 5, 16: 1, 20: 1, 25: 1, 40: 3, 43: 5, 51: 1, 54: 3, 70: 6, 72: 1, 74: 3, 80: 2, 94: 6, 95: 9, 96: 2})}, '4': {'devices': 1, 'total_samples': 192, 'class_distribution': defaultdict(<class 'int'>, {2: 2, 10: 11, 11: 2, 20: 2, 29: 1, 42: 2, 47: 1, 51: 3, 72: 5, 77: 5, 90: 1, 94: 4})}})}
+2025-08-26 14:04:25,095 - ContinuumFL - INFO - Setting up device models...
+2025-08-26 14:04:25,457 - ContinuumFL - INFO - ContinuumFL system initialization complete
+2025-08-26 14:04:25,457 - ContinuumFL - INFO - System: 5 devices, 1 zones, Device: cpu
+2025-08-26 14:04:25,458 - ContinuumFL - INFO - Starting federated learning for 1 rounds
+2025-08-26 14:04:25,458 - ContinuumFL - INFO - 
+=== Round 1/1 ===
+2025-08-26 14:04:30,354 - ContinuumFL - INFO - Local training completed: 3/3 devices
+2025-08-26 14:04:30,364 - ContinuumFL - ERROR - Training failed: result type Float can't be cast to the desired output type Long
+2025-08-26 14:06:40,397 - ContinuumFL - INFO - ContinuumFL Coordinator initialized
+2025-08-26 14:06:40,398 - ContinuumFL - INFO - Initializing ContinuumFL system...
+2025-08-26 14:06:40,398 - ContinuumFL - INFO - Using CPU for computation
+2025-08-26 14:06:40,398 - ContinuumFL - INFO - Preparing dataset...
+2025-08-26 14:06:41,452 - ContinuumFL - INFO - Creating global model...
+2025-08-26 14:06:41,521 - ContinuumFL - INFO - Model will use CPU
+2025-08-26 14:06:41,535 - ContinuumFL - INFO - Model: {'model_type': 'ResNet18', 'total_parameters': 11220132, 'trainable_parameters': 11220132, 'model_size_mb': 42.80140686035156, 'layers': 63}
+2025-08-26 14:06:41,535 - ContinuumFL - INFO - Creating edge devices...
+2025-08-26 14:06:41,536 - ContinuumFL - INFO - Created 5 edge devices
+2025-08-26 14:06:41,536 - ContinuumFL - INFO - Performing initial zone discovery...
+2025-08-26 14:06:41,536 - ContinuumFL - INFO - Distributing data to devices...
+2025-08-26 14:06:41,549 - ContinuumFL - INFO - Data distribution: {'total_devices': 5, 'device_stats': {'device_2': {'train_samples': 55, 'test_samples': 216, 'total_samples': 271, 'zone': '2'}, 'device_3': {'train_samples': 59, 'test_samples': 133, 'total_samples': 192, 'zone': '3'}, 'device_0': {'train_samples': 122, 'test_samples': 341, 'total_samples': 463, 'zone': '0'}, 'device_1': {'train_samples': 101, 'test_samples': 449, 'total_samples': 550, 'zone': '1'}, 'device_4': {'train_samples': 39, 'test_samples': 153, 'total_samples': 192, 'zone': '4'}}, 'zone_stats': defaultdict(<function FederatedDataset.analyze_data_distribution.<locals>.<lambda> at 0x00000268A3007EC0>, {'2': {'devices': 1, 'total_samples': 271, 'class_distribution': defaultdict(<class 'int'>, {2: 10, 10: 3, 11: 7, 29: 4, 32: 3, 40: 1, 42: 2, 43: 1, 51: 1, 54: 15, 72: 3, 74: 1, 94: 4})}, '3': {'devices': 1, 'total_samples': 192, 'class_distribution': defaultdict(<class 'int'>, {2: 2, 10: 5, 20: 1, 29: 3, 40: 7, 43: 4, 44: 3, 54: 4, 70: 15, 72: 8, 94: 3, 95: 1, 96: 3})}, '0': {'devices': 1, 'total_samples': 463, 'class_distribution': defaultdict(<class 'int'>, {2: 12, 10: 6, 11: 17, 20: 5, 23: 2, 25: 5, 29: 13, 40: 6, 70: 4, 72: 4, 94: 31, 95: 17})}, '1': {'devices': 1, 'total_samples': 550, 'class_distribution': defaultdict(<class 'int'>, {2: 17, 10: 35, 11: 5, 16: 1, 20: 1, 25: 1, 40: 3, 43: 5, 51: 1, 54: 3, 70: 6, 72: 1, 74: 3, 80: 2, 94: 6, 95: 9, 96: 2})}, '4': {'devices': 1, 'total_samples': 192, 'class_distribution': defaultdict(<class 'int'>, {2: 2, 10: 11, 11: 2, 20: 2, 29: 1, 42: 2, 47: 1, 51: 3, 72: 5, 77: 5, 90: 1, 94: 4})}})}
+2025-08-26 14:06:41,549 - ContinuumFL - INFO - Setting up device models...
+2025-08-26 14:06:41,910 - ContinuumFL - INFO - ContinuumFL system initialization complete
+2025-08-26 14:06:41,910 - ContinuumFL - INFO - System: 5 devices, 1 zones, Device: cpu
+2025-08-26 14:06:41,910 - ContinuumFL - INFO - Starting federated learning for 1 rounds
+2025-08-26 14:06:41,910 - ContinuumFL - INFO - 
+=== Round 1/1 ===
+2025-08-26 14:06:46,971 - ContinuumFL - INFO - Local training completed: 3/3 devices
+2025-08-26 14:06:47,378 - ContinuumFL - ERROR - Training failed: result type Float can't be cast to the desired output type Long
+2025-08-26 14:07:49,211 - ContinuumFL - INFO - ContinuumFL Coordinator initialized
+2025-08-26 14:07:49,212 - ContinuumFL - INFO - Initializing ContinuumFL system...
+2025-08-26 14:07:49,212 - ContinuumFL - INFO - Using CPU for computation
+2025-08-26 14:07:49,212 - ContinuumFL - INFO - Preparing dataset...
+2025-08-26 14:07:50,257 - ContinuumFL - INFO - Creating global model...
+2025-08-26 14:07:50,325 - ContinuumFL - INFO - Model will use CPU
+2025-08-26 14:07:50,338 - ContinuumFL - INFO - Model: {'model_type': 'ResNet18', 'total_parameters': 11220132, 'trainable_parameters': 11220132, 'model_size_mb': 42.80140686035156, 'layers': 63}
+2025-08-26 14:07:50,338 - ContinuumFL - INFO - Creating edge devices...
+2025-08-26 14:07:50,339 - ContinuumFL - INFO - Created 5 edge devices
+2025-08-26 14:07:50,339 - ContinuumFL - INFO - Performing initial zone discovery...
+2025-08-26 14:07:50,339 - ContinuumFL - INFO - Distributing data to devices...
+2025-08-26 14:07:50,351 - ContinuumFL - INFO - Data distribution: {'total_devices': 5, 'device_stats': {'device_0': {'train_samples': 55, 'test_samples': 216, 'total_samples': 271, 'zone': '0'}, 'device_3': {'train_samples': 59, 'test_samples': 133, 'total_samples': 192, 'zone': '3'}, 'device_4': {'train_samples': 122, 'test_samples': 341, 'total_samples': 463, 'zone': '4'}, 'device_1': {'train_samples': 101, 'test_samples': 449, 'total_samples': 550, 'zone': '1'}, 'device_2': {'train_samples': 39, 'test_samples': 153, 'total_samples': 192, 'zone': '2'}}, 'zone_stats': defaultdict(<function FederatedDataset.analyze_data_distribution.<locals>.<lambda> at 0x0000021FCEF37EC0>, {'0': {'devices': 1, 'total_samples': 271, 'class_distribution': defaultdict(<class 'int'>, {2: 10, 10: 3, 11: 7, 29: 4, 32: 3, 40: 1, 42: 2, 43: 1, 51: 1, 54: 15, 72: 3, 74: 1, 94: 4})}, '3': {'devices': 1, 'total_samples': 192, 'class_distribution': defaultdict(<class 'int'>, {2: 2, 10: 5, 20: 1, 29: 3, 40: 7, 43: 4, 44: 3, 54: 4, 70: 15, 72: 8, 94: 3, 95: 1, 96: 3})}, '4': {'devices': 1, 'total_samples': 463, 'class_distribution': defaultdict(<class 'int'>, {2: 12, 10: 6, 11: 17, 20: 5, 23: 2, 25: 5, 29: 13, 40: 6, 70: 4, 72: 4, 94: 31, 95: 17})}, '1': {'devices': 1, 'total_samples': 550, 'class_distribution': defaultdict(<class 'int'>, {2: 17, 10: 35, 11: 5, 16: 1, 20: 1, 25: 1, 40: 3, 43: 5, 51: 1, 54: 3, 70: 6, 72: 1, 74: 3, 80: 2, 94: 6, 95: 9, 96: 2})}, '2': {'devices': 1, 'total_samples': 192, 'class_distribution': defaultdict(<class 'int'>, {2: 2, 10: 11, 11: 2, 20: 2, 29: 1, 42: 2, 47: 1, 51: 3, 72: 5, 77: 5, 90: 1, 94: 4})}})}
+2025-08-26 14:07:50,351 - ContinuumFL - INFO - Setting up device models...
+2025-08-26 14:07:50,710 - ContinuumFL - INFO - ContinuumFL system initialization complete
+2025-08-26 14:07:50,710 - ContinuumFL - INFO - System: 5 devices, 1 zones, Device: cpu
+2025-08-26 14:07:50,710 - ContinuumFL - INFO - Starting federated learning for 1 rounds
+2025-08-26 14:07:50,711 - ContinuumFL - INFO - 
+=== Round 1/1 ===
+2025-08-26 14:07:54,382 - ContinuumFL - INFO - Local training completed: 3/3 devices
+2025-08-26 14:08:39,152 - ContinuumFL - INFO - Round 1 Results: Accuracy=0.0100, Loss=90897617543659378221384728576.0000, Devices=3, Zones=1, CommCost=55.69MB, Time=48.44s
+2025-08-26 14:08:39,152 - ContinuumFL - INFO -   Zone zone_0: Accuracy=0.0759
+2025-08-26 14:09:18,418 - ContinuumFL - INFO - Final results saved to ./results
+2025-08-26 14:09:18,418 - ContinuumFL - INFO - Federated learning completed
+2025-08-26 14:11:34,432 - ContinuumFL - INFO - ContinuumFL Coordinator initialized
+2025-08-26 14:12:25,663 - ContinuumFL - INFO - ContinuumFL Coordinator initialized
+2025-08-26 14:12:25,663 - ContinuumFL - INFO - Initializing ContinuumFL system...
+2025-08-26 14:12:25,663 - ContinuumFL - INFO - Using CPU for computation
+2025-08-26 14:12:25,663 - ContinuumFL - INFO - Preparing dataset...
+2025-08-26 14:12:26,708 - ContinuumFL - INFO - Creating global model...
+2025-08-26 14:12:26,773 - ContinuumFL - INFO - Model will use CPU
+2025-08-26 14:12:26,787 - ContinuumFL - INFO - Model: {'model_type': 'ResNet18', 'total_parameters': 11220132, 'trainable_parameters': 11220132, 'model_size_mb': 42.80140686035156, 'layers': 63}
+2025-08-26 14:12:26,788 - ContinuumFL - INFO - Creating edge devices...
+2025-08-26 14:12:26,788 - ContinuumFL - INFO - Created 10 edge devices
+2025-08-26 14:12:26,788 - ContinuumFL - INFO - Performing initial zone discovery...
+2025-08-26 14:12:26,788 - ContinuumFL - INFO - Distributing data to devices...
+2025-08-26 14:12:26,805 - ContinuumFL - INFO - Data distribution: {'total_devices': 10, 'device_stats': {'device_2': {'train_samples': 29, 'test_samples': 442, 'total_samples': 471, 'zone': '2'}, 'device_5': {'train_samples': 22, 'test_samples': 225, 'total_samples': 247, 'zone': '5'}, 'device_6': {'train_samples': 32, 'test_samples': 310, 'total_samples': 342, 'zone': '6'}, 'device_7': {'train_samples': 21, 'test_samples': 424, 'total_samples': 445, 'zone': '7'}, 'device_8': {'train_samples': 24, 'test_samples': 535, 'total_samples': 559, 'zone': '8'}, 'device_9': {'train_samples': 42, 'test_samples': 325, 'total_samples': 367, 'zone': '9'}, 'device_0': {'train_samples': 29, 'test_samples': 238, 'total_samples': 267, 'zone': '0'}, 'device_3': {'train_samples': 35, 'test_samples': 254, 'total_samples': 289, 'zone': '3'}, 'device_4': {'train_samples': 23, 'test_samples': 129, 'total_samples': 152, 'zone': '4'}, 'device_1': {'train_samples': 39, 'test_samples': 176, 'total_samples': 215, 'zone': '1'}}, 'zone_stats': defaultdict(<function FederatedDataset.analyze_data_distribution.<locals>.<lambda> at 0x000001D645ED0540>, {'2': {'devices': 1, 'total_samples': 471, 'class_distribution': defaultdict(<class 'int'>, {1: 1, 9: 5, 12: 1, 14: 2, 20: 1, 24: 8, 26: 2, 31: 2, 35: 3, 79: 2, 87: 1, 90: 1})}, '5': {'devices': 1, 'total_samples': 247, 'class_distribution': defaultdict(<class 'int'>, {7: 1, 15: 1, 24: 3, 26: 4, 35: 4, 54: 1, 56: 3, 67: 1, 80: 1, 90: 3})}, '6': {'devices': 1, 'total_samples': 342, 'class_distribution': defaultdict(<class 'int'>, {24: 11, 27: 1, 31: 1, 35: 1, 36: 1, 50: 1, 52: 1, 54: 1, 56: 1, 79: 1, 80: 2, 83: 9, 90: 1})}, '7': {'devices': 1, 'total_samples': 445, 'class_distribution': defaultdict(<class 'int'>, {7: 1, 8: 1, 9: 1, 12: 1, 27: 6, 31: 1, 50: 1, 54: 1, 59: 1, 79: 2, 80: 2, 83: 2, 87: 1})}, '8': {'devices': 1, 'total_samples': 559, 'class_distribution': defaultdict(<class 'int'>, {1: 1, 9: 1, 12: 6, 20: 1, 24: 1, 35: 1, 46: 1, 61: 1, 62: 1, 87: 1, 90: 4, 91: 2, 96: 2, 97: 1})}, '9': {'devices': 1, 'total_samples': 367, 'class_distribution': defaultdict(<class 'int'>, {1: 1, 8: 2, 11: 1, 20: 3, 27: 1, 31: 2, 35: 5, 41: 2, 54: 1, 59: 1, 68: 1, 71: 1, 79: 2, 80: 2, 83: 13, 87: 3, 97: 1})}, '0': {'devices': 1, 'total_samples': 267, 'class_distribution': defaultdict(<class 'int'>, {15: 1, 24: 1, 27: 1, 35: 5, 46: 2, 54: 3, 56: 2, 79: 7, 80: 1, 88: 1, 93: 1, 98: 4})}, '3': {'devices': 1, 'total_samples': 289, 'class_distribution': defaultdict(<class 'int'>, {1: 1, 25: 1, 26: 5, 28: 2, 31: 1, 35: 2, 54: 1, 59: 3, 61: 2, 62: 1, 71: 1, 75: 1, 80: 1, 87: 1, 90: 3, 94: 4, 97: 1, 98: 4})}, '4': {'devices': 1, 'total_samples': 152, 'class_distribution': defaultdict(<class 'int'>, {27: 4, 41: 3, 56: 1, 59: 1, 79: 1, 83: 4, 85: 2, 87: 5, 90: 1, 93: 1})}, '1': {'devices': 1, 'total_samples': 215, 'class_distribution': defaultdict(<class 'int'>, {12: 4, 15: 2, 20: 1, 24: 2, 26: 1, 31: 2, 35: 4, 41: 4, 46: 2, 75: 1, 79: 2, 80: 2, 83: 4, 87: 6, 90: 1, 94: 1})}})}
+2025-08-26 14:12:26,805 - ContinuumFL - INFO - Setting up device models...
+2025-08-26 14:12:27,529 - ContinuumFL - INFO - ContinuumFL system initialization complete
+2025-08-26 14:12:27,529 - ContinuumFL - INFO - System: 10 devices, 1 zones, Device: cpu
+2025-08-26 14:12:27,529 - ContinuumFL - INFO - Starting federated learning for 5 rounds
+2025-08-26 14:12:27,529 - ContinuumFL - INFO - 
+=== Round 1/5 ===
+2025-08-26 14:12:30,056 - ContinuumFL - INFO - Local training completed: 7/7 devices
+2025-08-26 14:13:01,537 - ContinuumFL - INFO - Round 1 Results: Accuracy=0.0099, Loss=8848898355248656458954309632.0000, Devices=7, Zones=1, CommCost=72.82MB, Time=34.01s
+2025-08-26 14:13:01,537 - ContinuumFL - INFO -   Zone zone_0: Accuracy=0.0278
+2025-08-26 14:13:01,537 - ContinuumFL - INFO - 
+=== Round 2/5 ===
+2025-08-26 14:13:04,080 - ContinuumFL - INFO - Local training completed: 7/7 devices
+2025-08-26 14:13:37,583 - ContinuumFL - INFO - Round 2 Results: Accuracy=0.0097, Loss=9763787532950669612290146304.0000, Devices=7, Zones=1, CommCost=72.82MB, Time=36.05s
+2025-08-26 14:13:37,583 - ContinuumFL - INFO -   Zone zone_0: Accuracy=0.0255
+2025-08-26 14:13:37,583 - ContinuumFL - INFO - 
+=== Round 3/5 ===
+2025-08-26 14:13:40,205 - ContinuumFL - INFO - Local training completed: 7/7 devices
+2025-08-26 14:14:12,863 - ContinuumFL - INFO - Round 3 Results: Accuracy=0.0100, Loss=13688913861952651365376327680.0000, Devices=7, Zones=1, CommCost=72.82MB, Time=35.28s
+2025-08-26 14:14:12,864 - ContinuumFL - INFO -   Zone zone_0: Accuracy=0.0311
+2025-08-26 14:14:12,864 - ContinuumFL - INFO - 
+=== Round 4/5 ===
+2025-08-26 14:14:15,314 - ContinuumFL - INFO - Local training completed: 6/7 devices
+2025-08-26 14:14:48,256 - ContinuumFL - INFO - Round 4 Results: Accuracy=0.0100, Loss=19409681513444260374334406656.0000, Devices=7, Zones=1, CommCost=68.54MB, Time=35.39s
+2025-08-26 14:14:48,256 - ContinuumFL - INFO -   Zone zone_0: Accuracy=0.0311
+2025-08-26 14:14:48,256 - ContinuumFL - INFO - 
+=== Round 5/5 ===
+2025-08-26 14:14:49,913 - ContinuumFL - INFO - Local training completed: 5/6 devices
+2025-08-26 14:15:23,804 - ContinuumFL - INFO - Round 5 Results: Accuracy=0.0100, Loss=22866211082324188011234852864.0000, Devices=6, Zones=1, CommCost=64.26MB, Time=35.55s
+2025-08-26 14:15:23,804 - ContinuumFL - INFO -   Zone zone_0: Accuracy=0.0311
+2025-08-26 14:15:51,099 - ContinuumFL - INFO - Final results saved to ./results
+2025-08-26 14:15:51,099 - ContinuumFL - INFO - Federated learning completed

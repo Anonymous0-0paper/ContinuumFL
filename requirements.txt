@@ -1,0 +1,40 @@
+# ContinuumFL Framework Requirements
+
+# Core ML frameworks
+torch
+torchvision
+numpy
+
+# Data processing
+pandas
+scikit-learn
+
+# Visualization
+matplotlib
+seaborn
+
+# Networking and communication
+requests
+
+# Utilities
+tqdm
+pillow
+
+# Optional: For CUDA support
+torch[cuda] # Uncomment if using GPU
+
+# Development tools (optional)
+jupyter
+notebook
+
+# For data downloading and processing
+urllib3
+zipfile36
+
+# JSON handling (usually included in Python standard library)
+# json
+
+# Collections and other standard library modules are included in Python
+
+# Note: Some packages might require specific versions depending on your system
+# Adjust versions as needed for compatibility
