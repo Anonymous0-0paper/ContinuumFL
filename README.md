@@ -1,4 +1,4 @@
-# ContinuumFL: Spatial-Aware Federated Learning Framework
+# ContinuumFL: Federated Learning with Spatial-Aware Aggregation in non-IID Edge Zones
 
 ![ContinuumFL Logo](https://img.shields.io/badge/ContinuumFL-v1.0.0-blue)
 ![Python](https://img.shields.io/badge/python-3.12+-blue.svg)
@@ -277,4 +277,5 @@ For questions and support:
 ---
 
 **ContinuumFL** - Bringing spatial awareness to federated learning in edge environments! 🌐🤖"# ContinuumFL" 
+
 
