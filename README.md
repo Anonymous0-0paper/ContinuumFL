@@ -150,10 +150,10 @@ ContinuumFL demonstrates significant improvements over baseline methods:
 
 | Method | Accuracy | Communication Reduction | Convergence Speed |
 |--------|----------|------------------------|------------------|
-| FedAvg | 65.2% | - | 1.0× |
-| FedProx | 67.1% | 5% | 1.1× |
-| HierFL | 68.3% | 15% | 1.2× |
-| **ContinuumFL** | **72.8%** | **35%** | **2.3×** |
+| FedAvg | XX% | - | ZZ× |
+| FedProx | XX% | Y% | ZZ× |
+| HierFL | XX% | YY% | ZZ× |
+| **ContinuumFL** | **XX%** | **YY%** | **ZZ×** |
 
 ## 🔧 Advanced Configuration
 
@@ -277,6 +277,7 @@ For questions and support:
 ---
 
 **ContinuumFL** - Bringing spatial awareness to federated learning in edge environments! 🌐🤖"# ContinuumFL" 
+
 
 
 
