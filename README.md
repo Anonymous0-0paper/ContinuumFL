@@ -5,7 +5,7 @@
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.6+-red.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
-A comprehensive implementation of the **ContinuumFL** framework for spatial-aware federated learning in heterogeneous edge environments. This framework introduces novel spatial-aware aggregation techniques that exploit geographical relationships and computational heterogeneity in edge zones.
+The implementation of the **ContinuumFL** framework for spatial-aware federated learning in heterogeneous edge environments. This framework introduces novel spatial-aware aggregation techniques that exploit geographical relationships and computational heterogeneity in edge zones.
 
 ## 📚 Overview
 
@@ -277,5 +277,6 @@ For questions and support:
 ---
 
 **ContinuumFL** - Bringing spatial awareness to federated learning in edge environments! 🌐🤖"# ContinuumFL" 
+
 
 
