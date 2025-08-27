@@ -1,0 +1,308 @@
+# .gitignore file created for free with Tower (https://www.git-tower.com/)
+# For suggestions or improvements please contact us using support@git-tower.com
+# Generated on 2025-08-27
+# Includes: pytorch, python, pip, pycharm, vscode, eclipse, atom
+
+### Universal ###
+# Common files that should be ignored in all projects
+
+# Logs
+*.log
+# Temporary files
+*.tmp
+*~
+
+**/__pycache__/
+**/results/
+
+**/data/
+
+*.bak
+# Environment files (containing secrets, API keys, credentials)
+.env
+*.env
+.env.*
+
+# Local configuration that shouldn't be shared
+*.local
+
+### Pytorch ###
+# pytorch specific files
+
+# PyTorch specific
+*.pt
+*.pth
+*.th
+lightning_logs/
+
+runs/
+wandb/
+checkpoints/
+
+### Python ###
+# Python compiled files, virtual environments, and cache
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+pypackages/
+build/
+develop-eggs/
+dist/
+downloads/
+
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+
+.installed.cfg
+*.egg
+MANIFEST
+.venv
+env/
+
+venv/
+ENV/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# PyInstaller
+*.manifest
+*.spec
+# Installer logs
+pip-log.txt
+
+pip-delete-this-directory.txt
+# Unit test / coverage reports
+.tox/
+.nox/
+.coverage.*
+
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+cover/
+# Translations
+*.mo
+*.pot
+# Django
+
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+# Flask
+instance/
+
+.webassets-cache
+# Scrapy
+.scrapy
+# Sphinx
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+# pyenv
+#.python-version
+
+# pipenv
+#Pipfile.lock
+# poetry
+#poetry.lock
+# pdm
+
+.pdm.toml
+__pypackages__/
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath
+*.sage.py
+# Spyder
+.spyderproject
+.spyproject
+
+# Rope
+.ropeproject
+# mkdocs
+/site
+# mypy
+
+.mypy_cache/
+.dmypy.json
+dmypy.json
+# Pyre
+.pyre/
+
+# pytype
+.pytype/
+# Cython
+cython_debug/
+# Poetry
+
+poetry.toml
+# ruff
+.ruff_cache/
+# LSP
+pyrightconfig.json
+
+*.sage.py
+.pdm.toml
+profile_default/
+.nox/
+.spyproject
+
+site/
+
+### Pip ###
+# Python pip package manager files
+
+# Pip
+pip-log.txt
+pip-delete-this-directory.txt
+.pip-cache/
+.pip/
+
+pip-selfcheck.json
+requirements.txt.bak
+.pip-tmp/
+.pip-build/
+pip-wheel-metadata/
+
+.pip_cache/
+
+### Pycharm ###
+# pycharm editor specific files
+
+# PyCharm
+.idea/
+*.iws
+*.iml
+*.ipr
+
+.idea_modules/
+out/
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/dictionaries
+
+.idea/misc.xml
+.idea/modules.xml
+.idea/vcs.xml
+.idea/jsLibraryMappings.xml
+.idea/datasources.xml
+
+.idea/dataSources.ids
+.idea/sqlDataSources.xml
+.idea/dynamic.xml
+.idea/uiDesigner.xml
+.idea/inspectionProfiles/
+
+### Vscode ###
+# Visual Studio Code editor settings and workspace files
+
+# Visual Studio Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+.history/
+*.vsix
+.ionide
+
+.vs/
+*.code-workspace
+.vscode-test
+.vscodeignore
+.vscode/chrome
+
+.vscode-server/
+.vscode/sftp.json
+.vscode/tags
+.devcontainer/
+
+### Eclipse ###
+# Eclipse IDE specific files and settings
+
+# Eclipse
+.metadata
+bin/
+tmp/
+*.tmp
+
+*.bak
+*.swp
+*~.nib
+local.properties
+.settings/
+
+.loadpath
+.recommenders
+.project
+.externalToolBuilders/
+*.launch
+
+.classpath
+.factorypath
+.buildpath
+.target
+.tern-project
+
+.springBeans
+.recommenders/
+.apt_generated/
+.apt_generated_test/
+.cache-main
+
+.scala_dependencies
+.worksheet
+.autotools
+.cproject
+.sts4-cache/
+
+.pydevproject
+.texlipse
+*_flymake.*
+
+### Atom ###
+# Atom editor settings and workspace files
+
+# Atom
+.atom/
+*.cson
+.apm/
+.apm/.apmrc
+
+.apm/_locks
+.apm/atom-package-*
+.node-gyp/
+storage/
+compile-cache/
+
+dev/
+.atom-socket-secret-*

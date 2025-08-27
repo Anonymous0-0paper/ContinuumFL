@@ -44,7 +44,10 @@ class FederatedDataset:
         self.test_data = None
         self.device_datasets: Dict[str, Dict[str, Any]] = {}
         self.zone_distributions: Dict[str, np.ndarray] = {}
-        
+
+        # Dataset size limitation
+        self.max_samples = config.max_samples
+
         # Create data directory
         os.makedirs(data_dir, exist_ok=True)
     
@@ -77,13 +80,21 @@ class FederatedDataset:
         ])
         
         # Download datasets
-        self.train_data = torchvision.datasets.CIFAR100(
+        full_train = torchvision.datasets.CIFAR100(
             root=self.data_dir, train=True, download=True, transform=transform_train
         )
-        
-        self.test_data = torchvision.datasets.CIFAR100(
+        num_samples = min(len(full_train), self.max_samples) if self.max_samples > 0 else len(full_train)
+        self.train_data = Subset(full_train, range(num_samples))
+        # Attach targets so rest of code works unchanged
+        self.train_data.targets = [full_train.targets[i] for i in self.train_data.indices]
+
+        full_test = torchvision.datasets.CIFAR100(
             root=self.data_dir, train=False, download=True, transform=transform_test
         )
+        num_samples = min(len(full_test), self.max_samples) if self.max_samples > 0 else len(full_test)
+        self.test_data = Subset(full_test, range(num_samples))
+        # Attach targets so rest of code works unchanged
+        self.test_data.targets = [full_test.targets[i] for i in self.test_data.indices]
         
         print(f"CIFAR-100 loaded: {len(self.train_data)} train, {len(self.test_data)} test samples")
     
@@ -370,13 +381,97 @@ class FederatedDataset:
             test_class_indices[label].append(idx)
         
         # Distribute data to devices
-        device_datasets = {}
-        
+        device_datasets = {} # (dict (dev_id: (trainset, testset)))
+
+        # Train set partitioning
+        device_indices = {}
+        rng = np.random.default_rng(42) # TODO bind random seed to config
+
+        # Assign indices to zones
+        zone_indices = {}
+        zone_distribution_cache = {}
+        device_distribution_cache = {}
+        for clazz in train_class_indices.keys():
+            class_indices = train_class_indices[clazz]
+            rng.shuffle(class_indices)
+
+            zone_distributions = dict(zip(list(zones.keys()), rng.dirichlet([self.inter_zone_alpha] * num_zones)))
+            zone_distribution_cache[clazz] = zone_distributions
+            counts = {zone_id : zone_distributions[zone_id] * len(class_indices) for zone_id in zones.keys()}
+
+            while np.array(counts.values()).sum() < len(class_indices): counts[max(zone_distributions, key=zone_distributions.get)] += 1
+            while np.array(counts.values()).sum() > len(class_indices): counts[max(zone_distributions, key=zone_distributions.get)] -= 1
+
+            start = 0
+            for zone_id, device_list in zones.items():
+                zone_indices[zone_id] = {clazz: [class_indices[start:start + counts[zone_id]]]}
+                start += counts[zone_id]
+
+        for zone_id, device_list in zones.items():
+            zn_idxs = zone_indices[zone_id]
+            num_devices = len(device_list)
+
+            for clazz in zn_idxs:
+                class_indices = zn_idxs[clazz]
+                rng.shuffle(class_indices)
+
+                device_distributions = dict(zip(device_list, rng.dirichlet([self.intra_zone_alpha] * num_devices)))
+                device_distribution_cache[clazz] = device_distributions
+                counts = {device_id: device_distributions[device_id] * len(class_indices) for device_id in device_list}
+
+                while np.array(counts.values()).sum() < len(class_indices): counts[max(device_distributions, key=device_distributions.get)] += 1
+                while np.array(counts.values()).sum() > len(class_indices): counts[max(device_distributions, key=device_distributions.get)] -= 1
+
+                start = 0
+                for device_id in device_list:
+                    device_indices[device_id] = {clazz: [class_indices[start:start + counts[device_id]]]}
+                    start += counts[device_id]
+
+        # Test set partitioning
+        for clazz in train_class_indices.keys():
+            class_indices = train_class_indices[clazz]
+            rng.shuffle(class_indices)
+
+            zone_distributions = dict(zip(list(zones.keys()), rng.dirichlet([self.inter_zone_alpha] * num_zones)))
+            zone_distribution_cache[clazz] = zone_distributions
+            counts = {zone_id: zone_distributions[zone_id] * len(class_indices) for zone_id in zones.keys()}
+
+            while np.array(counts.values()).sum() < len(class_indices): counts[
+                max(zone_distributions, key=zone_distributions.get)] += 1
+            while np.array(counts.values()).sum() > len(class_indices): counts[
+                max(zone_distributions, key=zone_distributions.get)] -= 1
+
+            start = 0
+            for zone_id, device_list in zones.items():
+                zone_indices[zone_id] = {clazz: [class_indices[start:start + counts[zone_id]]]}
+                start += counts[zone_id]
+
+        for zone_id, device_list in zones.items():
+            zn_idxs = zone_indices[zone_id]
+            num_devices = len(device_list)
+
+            for clazz in zn_idxs:
+                class_indices = zn_idxs[clazz]
+                rng.shuffle(class_indices)
+
+                device_distributions = dict(zip(device_list, rng.dirichlet([self.intra_zone_alpha] * num_devices)))
+                device_distribution_cache[clazz] = device_distributions
+                counts = {device_id: device_distributions[device_id] * len(class_indices) for device_id in device_list}
+
+                while np.array(counts.values()).sum() < len(class_indices): counts[
+                    max(device_distributions, key=device_distributions.get)] += 1
+                while np.array(counts.values()).sum() > len(class_indices): counts[
+                    max(device_distributions, key=device_distributions.get)] -= 1
+
+                start = 0
+                for device_id in device_list:
+                    device_indices[device_id] = {clazz: [class_indices[start:start + counts[device_id]]]}
+                    start += counts[device_id]
+
         for zone_id, device_list in zones.items():
             zone_dist = zone_distributions[zone_id]
             
             # Calculate total samples for this zone
-            zone_devices = len(device_list)
             samples_per_device = len(self.train_data) // len(devices)
             
             for device_id in device_list:

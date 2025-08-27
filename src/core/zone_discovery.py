@@ -96,8 +96,8 @@ class ZoneDiscovery:
         n_devices = len(devices)
         
         # Initialize each device as a singleton cluster
-        clusters = [set([i]) for i in range(n_devices)]
-        
+        clusters = [{i} for i in range(n_devices)]
+        print(f"Hierarchical clustering for {self.config.num_zones} zones.")
         while len(clusters) > self.config.num_zones:
             # Compute similarity matrix for current clusters
             cluster_similarities = self._compute_cluster_similarities(clusters, devices)

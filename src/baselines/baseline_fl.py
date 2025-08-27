@@ -461,7 +461,7 @@ class BaselineFLMethods:
         first_model = model_updates[0]
         
         for param_name in first_model.keys():
-            aggregated_weights[param_name] = torch.zeros_like(first_model[param_name])
+            aggregated_weights[param_name] = torch.zeros_like(first_model[param_name], dtype=torch.float32)
         
         # Weighted aggregation
         for model_update, weight in zip(model_updates, normalized_weights):
