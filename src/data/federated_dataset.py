@@ -14,6 +14,9 @@ from typing import Dict, List, Tuple, Optional, Any
 import pickle
 import json
 from collections import defaultdict
+
+from src.core.zone import Zone
+
 try:
     import requests
 except ImportError:
@@ -235,68 +238,7 @@ class FederatedDataset:
     def _download_shakespeare(self):
         """Download and process Shakespeare dataset"""
         # This is a simplified version - in practice, you'd download from LEAF
-        print("Creating synthetic Shakespeare dataset...")
-        
-        # Simple character-level text data simulation
-        vocab = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?'-"
-        seq_length = 80
-        
-        # Generate synthetic Shakespeare-like text
-        np.random.seed(42)
-        train_sequences = []
-        train_targets = []
-        
-        for _ in range(10000):  # Generate 10k sequences
-            seq = np.random.choice(list(vocab), seq_length)
-            target = np.random.choice(list(vocab))
-            
-            # Convert to indices
-            seq_indices = [vocab.index(c) for c in seq]
-            target_index = vocab.index(target)
-            
-            train_sequences.append(seq_indices)
-            train_targets.append(target_index)
-        
-        # Test data
-        test_sequences = []
-        test_targets = []
-        
-        for _ in range(2000):  # Generate 2k test sequences
-            seq = np.random.choice(list(vocab), seq_length)
-            target = np.random.choice(list(vocab))
-            
-            seq_indices = [vocab.index(c) for c in seq]
-            target_index = vocab.index(target)
-            
-            test_sequences.append(seq_indices)
-            test_targets.append(target_index)
-        
-        # Convert to tensors
-        train_data = {
-            'sequences': torch.tensor(train_sequences).long(),
-            'targets': torch.tensor(train_targets).long()
-        }
-        
-        test_data = {
-            'sequences': torch.tensor(test_sequences).long(),
-            'targets': torch.tensor(test_targets).long()
-        }
-        
-        # Save vocabulary
-        vocab_path = os.path.join(self.data_dir, 'shakespeare', 'vocab.txt')
-        with open(vocab_path, 'w') as f:
-            f.write(vocab)
-        
-        # Save processed data
-        shakespeare_path = os.path.join(self.data_dir, 'shakespeare')
-        with open(os.path.join(shakespeare_path, 'train.pkl'), 'wb') as f:
-            pickle.dump(train_data, f)
-        with open(os.path.join(shakespeare_path, 'test.pkl'), 'wb') as f:
-            pickle.dump(test_data, f)
-        
-        self.train_data = self._text_dict_to_dataset(train_data)
-        self.test_data = self._text_dict_to_dataset(test_data)
-        
+
         print(f"Shakespeare processed: {len(self.train_data)} train, {len(self.test_data)} test samples")
     
     def _text_dict_to_dataset(self, data_dict: Dict[str, torch.Tensor]) -> Dataset:
@@ -552,7 +494,7 @@ class FederatedDataset:
             drop_last=False
         )
     
-    def analyze_data_distribution(self) -> Dict[str, Any]:
+    def analyze_data_distribution(self, zones: dict[str, Zone]) -> Dict[str, Any]:
         """Analyze the data distribution across devices and zones"""
         if not self.device_datasets:
             return {}
@@ -562,44 +504,43 @@ class FederatedDataset:
             "device_stats": {},
             "zone_stats": defaultdict(lambda: {"devices": 0, "total_samples": 0, "class_distribution": defaultdict(int)})
         }
-        
-        for device_id, (train_subset, test_subset) in self.device_datasets.items():
-            # Extract zone from device ID (assuming format like "device_0_zone_1")
-            zone_id = device_id.split('_')[-1] if '_' in device_id else "unknown"
-            
-            train_size = len(train_subset) if train_subset else 0
-            test_size = len(test_subset) if test_subset else 0
-            
-            analysis["device_stats"][device_id] = {
-                "train_samples": train_size,
-                "test_samples": test_size,
-                "total_samples": train_size + test_size,
-                "zone": zone_id
-            }
-            
-            # Update zone statistics
-            analysis["zone_stats"][zone_id]["devices"] += 1
-            analysis["zone_stats"][zone_id]["total_samples"] += train_size + test_size
-            
-            # Analyze class distribution for train data
-            if train_subset and len(train_subset) > 0:
-                if hasattr(train_subset.dataset, 'targets'):
-                    targets = train_subset.dataset.targets
-                elif hasattr(train_subset.dataset, 'labels'):
-                    targets = train_subset.dataset.labels
-                else:
-                    continue
-                
-                indices = train_subset.indices
-                device_labels = [targets[i] for i in indices]
-                
-                for label in device_labels:
-                    if isinstance(label, torch.Tensor):
-                        label = label.item()
-                    analysis["zone_stats"][zone_id]["class_distribution"][int(label)] += 1
-        
+
+        for zone_id, zone in zones.items():
+            for device_id in zone.devices.keys():
+                (train_subset, test_subset) = self.device_datasets[device_id]
+
+                train_size = len(train_subset) if train_subset else 0
+                test_size = len(test_subset) if test_subset else 0
+
+                analysis["device_stats"][device_id] = {
+                    "train_samples": train_size,
+                    "test_samples": test_size,
+                    "total_samples": train_size + test_size,
+                    "zone": zone_id
+                }
+
+                # Update zone statistics
+                analysis["zone_stats"][zone_id]["devices"] += 1
+                analysis["zone_stats"][zone_id]["total_samples"] += train_size + test_size
+
+                # Analyze class distribution for train data
+                if train_subset and len(train_subset) > 0:
+                    if hasattr(train_subset.dataset, 'targets'):
+                        targets = train_subset.dataset.targets
+                    elif hasattr(train_subset.dataset, 'labels'):
+                        targets = train_subset.dataset.labels
+                    else:
+                        continue
+
+                    indices = train_subset.indices
+                    device_labels = [targets[i] for i in indices]
+
+                    for label in device_labels:
+                        if isinstance(label, torch.Tensor):
+                            label = label.item()
+                        analysis["zone_stats"][zone_id]["class_distribution"][int(label)] += 1
         return analysis
-    
+
     def save_data_distribution(self, filepath: str):
         """Save device data distribution for reproducibility"""
         distribution_info = {

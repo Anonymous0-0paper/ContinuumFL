@@ -20,7 +20,7 @@ class ContinuumFLConfig:
         }
         self.similarity_threshold = 0.6  # θ - clustering threshold
         self.min_zone_size = 3           # n_min
-        self.max_zone_size = 5          # n_max
+        self.max_zone_size = 10          # n_max
         self.distance_scaling = 10.0     # σ - distance scaling parameter
         self.stability_tradeoff = 0.3    # γ - stability vs optimality
         self.stability_threshold = 0.1   # θ_stability

@@ -165,16 +165,33 @@ class ContinuumFLCoordinator:
     def _create_edge_devices(self):
         """Create edge devices with heterogeneous resources and spatial distribution"""
         region_width, region_height = self.config.region_size
-        
-        for i in range(self.config.num_devices):
-            device_id = f"device_{i}"
-            
+        num_physical_zones = self.config.num_zones
+        physical_zone_locations = []
+        physical_zone_sizes = []
+        for physical_zone in range(num_physical_zones):
             # Generate random location within region
             location = (
                 np.random.uniform(0, region_width),
                 np.random.uniform(0, region_height)
             )
-            
+            size = np.random.uniform(1, 5)
+
+            physical_zone_locations.append(location)
+            physical_zone_sizes.append(size)
+
+        for i in range(self.config.num_devices):
+            device_id = f"device_{i}"
+            physical_zone_assignment = np.random.choice(num_physical_zones, 1)[0]
+
+            # Generate random location within zone
+            x = np.random.normal(physical_zone_locations[physical_zone_assignment][0], physical_zone_sizes[physical_zone_assignment])
+            x = np.clip(x, 0, region_width)
+
+            y = np.random.normal(physical_zone_locations[physical_zone_assignment][1], physical_zone_sizes[physical_zone_assignment])
+            y = np.clip(y, 0, region_height)
+
+            location = (x, y)
+
             # Generate heterogeneous resources
             compute_capacity = np.random.uniform(*self.config.device_compute_range)
             memory_capacity = np.random.uniform(*self.config.device_memory_range)
@@ -213,7 +230,7 @@ class ContinuumFLCoordinator:
                     device.estimate_data_quality()
         
         # Analyze data distribution
-        distribution_analysis = self.dataset.analyze_data_distribution()
+        distribution_analysis = self.dataset.analyze_data_distribution(zones=self.zones)
         self.logger.info(f"Data distribution: {distribution_analysis}")
     
     def _setup_device_models(self):
@@ -684,7 +701,3 @@ class ContinuumFLCoordinator:
         
         # Reset tracking variables
         self.current_round = 0
-        self.training_history.clear()
-        self.accuracies.clear()
-        self.losses.clear()
-        self.communication_costs.clear()

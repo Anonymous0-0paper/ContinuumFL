@@ -213,7 +213,7 @@ def run_continuum_fl_experiment(config: ContinuumFLConfig) -> (Dict[str, Any], C
     # Run federated learning
     print("🎯 Starting federated learning...")
     training_results = coordinator.run_federated_learning()
-    
+    print(f"AFTER FL COORDINATOR TRAIN HISTORY: {coordinator.training_history}")
     print("✅ ContinuumFL experiment completed!")
     return training_results, coordinator
 
@@ -221,9 +221,7 @@ def run_baseline_experiments(coordinator: ContinuumFLCoordinator) -> Dict[str, A
     """Run baseline comparison experiments"""
     
     print("\n📊 Running baseline comparisons...")
-    
     baseline_results = coordinator.run_baseline_comparison()
-    
     print("✅ Baseline experiments completed!")
     return baseline_results
 
@@ -315,18 +313,16 @@ def main():
     try:
         # Run main ContinuumFL experiment
         training_results, coordinator = run_continuum_fl_experiment(config)
-        
+        print(f"Training Results: {training_results}")
         # Initialize baseline results
         baseline_results = {}
         
         # Run baseline comparisons if requested
         if args.run_baselines:
             baseline_results = run_baseline_experiments(coordinator)
-        
         # Create visualizations if requested
         if args.create_visualizations:
             create_visualizations(coordinator, baseline_results, config)
-        
         # Save results if requested
         if args.save_results:
             save_experiment_results(training_results, baseline_results, config)

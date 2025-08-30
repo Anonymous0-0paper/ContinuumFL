@@ -5,7 +5,7 @@ Implements gradient compression, delta encoding, and caching optimizations.
 
 import torch
 import numpy as np
-from typing import Dict, Tuple, List, Optional, Any
+from typing import Dict, Tuple, Any
 import time
 from collections import defaultdict, deque
 
