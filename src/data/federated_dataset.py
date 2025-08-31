@@ -265,11 +265,11 @@ class FederatedDataset:
             print("Loading existing Shakespeare data...")
             with open(os.path.join(shakespeare_path, 'train.pkl'), 'rb') as f:
                 train_text = pickle.load(f)
-                self.train_data = self.ShakespeareDataset(train_text, seq_length=80, step=600)
+                self.train_data = self.ShakespeareDataset(train_text, seq_length=80, step=300)
 
             with open(os.path.join(shakespeare_path, 'test.pkl'), 'rb') as f:
                 test_text = pickle.load(f)
-                self.test_data = self.ShakespeareDataset(test_text, seq_length=80, step=600)
+                self.test_data = self.ShakespeareDataset(test_text, seq_length=80, step=300)
             return
         
         # Download and process Shakespeare data
@@ -302,7 +302,7 @@ class FederatedDataset:
         test_text = []
 
         for c in full_text:
-            split_idx = int(0.9 * char_count[c])
+            split_idx = int(0.8 * char_count[c])
             if char_train_count[c] < split_idx:
                 train_text.append(c)
                 char_train_count[c] += 1
@@ -321,8 +321,8 @@ class FederatedDataset:
             pickle.dump(test_text, f)
 
         # Wrap as Dataset objects
-        self.train_data = self.ShakespeareDataset(train_text, seq_length=80, step=600)
-        self.test_data = self.ShakespeareDataset(test_text, seq_length=80, step=600)
+        self.train_data = self.ShakespeareDataset(train_text, seq_length=80, step=300)
+        self.test_data = self.ShakespeareDataset(test_text, seq_length=80, step=300)
 
         print(f"Shakespeare processed: {len(self.train_data)} train, {len(self.test_data)} test samples")
 
