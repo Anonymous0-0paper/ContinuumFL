@@ -4,6 +4,8 @@ Handles dataset downloading, preprocessing, and non-IID distribution across zone
 """
 
 import os
+import random
+
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -14,7 +16,7 @@ from typing import Dict, List, Tuple, Optional, Any
 import pickle
 import json
 from collections import defaultdict
-
+from datasets import load_dataset, DownloadConfig
 from src.core.zone import Zone
 
 try:
@@ -215,7 +217,42 @@ class FederatedDataset:
                 return self.images[idx], self.labels[idx]
         
         return DictDataset(data_dict['images'], data_dict['labels'])
-    
+
+    class ShakespeareDataset(torch.utils.data.Dataset):
+        def __init__(self, text, seq_length=80, step=1):
+            self.data_len = max(0, (len(text) - seq_length - 1) // step + 1)
+            self.text = text[:self.data_len * step + seq_length]
+            self.seq_length = seq_length
+            self.step = step  # wie viele Zeichen übersprungen werden
+            self.vocab = sorted(set(text))
+            self.num_classes = len(self.vocab)
+            self.stoi = {ch: i for i, ch in enumerate(self.vocab)}
+            self.itos = {i: ch for i, ch in enumerate(self.vocab)}
+
+            self.targets = torch.tensor(
+                [self.stoi[text[i * step + seq_length]] for i in range(self.data_len)],
+                dtype=torch.long
+            )
+
+        def __len__(self):
+            return self.data_len
+
+        def __getitem__(self, idx):
+            start = idx * self.step
+            end = start + self.seq_length
+
+            # Make sure we never step out of range
+            if end >= len(self.text) - 1:
+                end = len(self.text) - self.seq_length - 1
+                start = end - self.seq_length
+
+            seq = self.text[start:end]
+            target = self.text[end]
+
+            seq_tensor = torch.tensor([self.stoi[c] for c in seq], dtype=torch.long)
+            target_tensor = torch.tensor(self.stoi[target], dtype=torch.long)
+            return seq_tensor, target_tensor
+
     def _prepare_shakespeare(self):
         """Prepare Shakespeare dataset"""
         print("Preparing Shakespeare dataset...")
@@ -227,20 +264,68 @@ class FederatedDataset:
         if os.path.exists(os.path.join(shakespeare_path, 'train.pkl')):
             print("Loading existing Shakespeare data...")
             with open(os.path.join(shakespeare_path, 'train.pkl'), 'rb') as f:
-                self.train_data = pickle.load(f)
+                train_text = pickle.load(f)
+                self.train_data = self.ShakespeareDataset(train_text, seq_length=80, step=600)
+
             with open(os.path.join(shakespeare_path, 'test.pkl'), 'rb') as f:
-                self.test_data = pickle.load(f)
+                test_text = pickle.load(f)
+                self.test_data = self.ShakespeareDataset(test_text, seq_length=80, step=600)
             return
         
         # Download and process Shakespeare data
         self._download_shakespeare()
-    
+
     def _download_shakespeare(self):
-        """Download and process Shakespeare dataset"""
-        # This is a simplified version - in practice, you'd download from LEAF
+        shakespeare_path = os.path.join(self.data_dir, 'shakespeare')
+        os.makedirs(shakespeare_path, exist_ok=True)
+
+        # Load dataset from Hugging Face
+        download_config = DownloadConfig(cache_dir=shakespeare_path)
+        dataset = load_dataset("flwrlabs/shakespeare", download_config=download_config)
+
+        # Concatenate all lines into one string
+        full_text = "".join(dataset["train"]["x"])
+
+        # Limit dataset size
+        max_chars = 3_000_000
+        full_text = full_text[:max_chars]
+
+        # Count occurrences of each character
+        from collections import defaultdict
+        char_count = defaultdict(int)
+        for c in full_text:
+            char_count[c] += 1
+
+        # Keep track of how many of each char went into train
+        char_train_count = defaultdict(int)
+        train_text = []
+        test_text = []
+
+        for c in full_text:
+            split_idx = int(0.9 * char_count[c])
+            if char_train_count[c] < split_idx:
+                train_text.append(c)
+                char_train_count[c] += 1
+            else:
+                test_text.append(c)
+
+        # Shuffle train and test texts (optional, but usually good)
+        random.seed(42)
+        random.shuffle(train_text)
+        random.shuffle(test_text)
+
+        # Save raw train/test texts
+        with open(os.path.join(shakespeare_path, 'train.pkl'), 'wb') as f:
+            pickle.dump(train_text, f)
+        with open(os.path.join(shakespeare_path, 'test.pkl'), 'wb') as f:
+            pickle.dump(test_text, f)
+
+        # Wrap as Dataset objects
+        self.train_data = self.ShakespeareDataset(train_text, seq_length=80, step=600)
+        self.test_data = self.ShakespeareDataset(test_text, seq_length=80, step=600)
 
         print(f"Shakespeare processed: {len(self.train_data)} train, {len(self.test_data)} test samples")
-    
+
     def _text_dict_to_dataset(self, data_dict: Dict[str, torch.Tensor]) -> Dataset:
         """Convert text dictionary to PyTorch dataset"""
         class TextDataset(Dataset):
@@ -250,7 +335,7 @@ class FederatedDataset:
             
             def __len__(self):
                 return len(self.sequences)
-            
+
             def __getitem__(self, idx):
                 return self.sequences[idx], self.targets[idx]
         
@@ -293,7 +378,8 @@ class FederatedDataset:
         elif self.dataset_name.lower() == 'femnist':
             num_classes = 62
         elif self.dataset_name.lower() == 'shakespeare':
-            num_classes = len("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?'-")
+            num_classes = self.train_data.num_classes
+            print(f"Shakespeare has {num_classes} classes.")
         else:
             num_classes = 10  # Default
         
@@ -469,7 +555,7 @@ class FederatedDataset:
         
         train_subset, test_subset = self.device_datasets[device_id]
         subset = train_subset if is_train else test_subset
-        
+        print("Test Set has size: ", len(subset))
         if subset is None or len(subset) == 0:
             return None
         
@@ -540,7 +626,7 @@ class FederatedDataset:
                             label = label.item()
                         analysis["zone_stats"][zone_id]["class_distribution"][int(label)] += 1
         return analysis
-
+    
     def save_data_distribution(self, filepath: str):
         """Save device data distribution for reproducibility"""
         distribution_info = {

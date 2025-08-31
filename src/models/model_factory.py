@@ -272,7 +272,7 @@ class ModelFactory:
         
         elif dataset_name == 'shakespeare':
             return ShakespeareLSTM(
-                vocab_size=model_config.get('vocab_size', 80),
+                vocab_size=60,
                 embedding_dim=model_config.get('embedding_dim', 64),
                 hidden_dim=model_config.get('hidden_dim', 256),
                 num_layers=model_config.get('num_layers', 3)

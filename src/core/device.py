@@ -12,6 +12,9 @@ import time
 import uuid
 from collections import deque
 
+from src.models.model_factory import ShakespeareLSTM
+
+
 @dataclass
 class DeviceResources:
     """Resource specification for edge devices"""
@@ -121,7 +124,11 @@ class EdgeDevice:
                     data, target = data.cuda(), target.cuda()
                 
                 optimizer.zero_grad()
-                output = self.local_model(data)
+                if isinstance(self.local_model, ShakespeareLSTM):
+
+                    output, _ = self.local_model(data)
+                else:
+                    output = self.local_model(data)
                 loss = criterion(output, target)
                 loss.backward()
                 optimizer.step()

@@ -462,6 +462,7 @@ class ContinuumFLCoordinator:
                     test_dataloader = self.dataset.get_device_dataloader(
                         device.device_id, is_train=False
                     )
+                    print("Test Size: ", len(test_dataloader))
                     if test_dataloader:
                         for data, labels in test_dataloader:
                             zone_test_data.append(data)

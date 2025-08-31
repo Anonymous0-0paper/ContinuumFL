@@ -415,8 +415,6 @@ class ContinuumFLVisualizer:
         
         print("Creating comprehensive visualization report...")
 
-        print(f"Train History: {coordinator.training_history}")
-
         # Get system status and data
         training_history = list(coordinator.training_history)
         aggregation_stats = coordinator.aggregator.get_aggregation_stats()
