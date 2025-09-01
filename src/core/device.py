@@ -12,6 +12,8 @@ import time
 import uuid
 from collections import deque
 
+from matplotlib import pyplot as plt
+
 from src.models.model_factory import ShakespeareLSTM
 
 
@@ -122,7 +124,7 @@ class EdgeDevice:
                 # Move data to device
                 if device == 'cuda':
                     data, target = data.cuda(), target.cuda()
-                
+
                 optimizer.zero_grad()
                 if isinstance(self.local_model, ShakespeareLSTM):
 
@@ -132,7 +134,7 @@ class EdgeDevice:
                 loss = criterion(output, target)
                 loss.backward()
                 optimizer.step()
-                
+
                 total_loss += loss.item()
                 num_batches += 1
         
