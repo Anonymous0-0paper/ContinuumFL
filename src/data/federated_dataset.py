@@ -125,31 +125,15 @@ class FederatedDataset:
     
     def _download_femnist(self):
         """Download and process FEMNIST dataset"""
-        femnist_url = "https://github.com/TalwalkarLab/leaf/raw/master/data/femnist/data/all_data.zip"
         femnist_path = os.path.join(self.data_dir, 'femnist')
         os.makedirs(femnist_path, exist_ok=True)
         
         # Download if not exists
-        zip_path = os.path.join(femnist_path, 'all_data.zip')
-        if not os.path.exists(zip_path):
-            if requests:
-                print("Downloading FEMNIST data...")
-                response = requests.get(femnist_url)
-                with open(zip_path, 'wb') as f:
-                    f.write(response.content)
-            else:
-                print("Warning: requests not available, cannot download FEMNIST data")
-                return
-        
-        # Extract and process
-        if zipfile:
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(femnist_path)
-        else:
-            print("Warning: zipfile not available, cannot extract FEMNIST data")
-            return
-        
-        # Process JSON files to create unified dataset
+        download_config = DownloadConfig(cache_dir=femnist_path)
+        dataset = load_dataset('flwrlabs/femnist', download_config=download_config)
+
+
+
         self._process_femnist_json(femnist_path)
     
     def _process_femnist_json(self, femnist_path: str):
