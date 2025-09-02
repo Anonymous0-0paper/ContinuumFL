@@ -107,8 +107,9 @@ class EdgeDevice:
         self.local_model.train()
         
         # Setup optimizer
-        optimizer = torch.optim.SGD(self.local_model.parameters(), 
-                                  lr=learning_rate, momentum=0.9, weight_decay=1e-4)
+        #optimizer = torch.optim.SGD(self.local_model.parameters(),
+                                  #lr=learning_rate, momentum=0.9, weight_decay=1e-4)
+        optimizer = torch.optim.Adam(self.local_model.parameters(), lr=0.001)
         criterion = nn.CrossEntropyLoss()
         
         # Move criterion to same device
@@ -131,19 +132,24 @@ class EdgeDevice:
                     output, _ = self.local_model(data)
                 else:
                     output = self.local_model(data)
+                predictions = torch.argmax(output, dim=1)
+                correct = (predictions == target).float().sum()
                 loss = criterion(output, target)
                 loss.backward()
                 optimizer.step()
 
                 total_loss += loss.item()
                 num_batches += 1
+
+                if batch_idx % 20 == 0:
+                    print(f'({self.device_id}) Loss: {loss:.3f}, Accuracy {(correct / len(target)) * 100:.2f}%')
         
         training_time = time.time() - start_time
         self.training_times.append(training_time)
         
         # Calculate gradient for similarity computation (move to CPU for storage)
         local_gradient = self._compute_model_gradient(global_model, device)
-        self.gradient_history.append(local_gradient.clone())
+        self.gradient_history.append(local_gradient)
         
         # Update participation history
         self.participation_history.append(1)  # Participated in this round
@@ -155,26 +161,26 @@ class EdgeDevice:
         # Move model back to CPU for state dict extraction
         if device == 'cuda':
             self.local_model = self.local_model.cpu()
-        
+
+        training_loss = total_loss / max(num_batches, 1)
+        print(f"Training Loss. {training_loss:.3f}")
         return {
             "success": True,
             "model_weights": self.local_model.state_dict(),
-            "training_loss": total_loss / max(num_batches, 1),
+            "training_loss": training_loss,
             "training_time": training_time,
             "dataset_size": self.dataset_size,
             "gradient": local_gradient
         }
     
-    def _compute_model_gradient(self, global_model: nn.Module, device: str = 'cpu') -> torch.Tensor:
+    def _compute_model_gradient(self, global_model: nn.Module, device: str = 'cpu') -> Dict[str, torch.Tensor]:
         """Compute gradient difference between local and global model"""
         # Ensure both models are on CPU for comparison
-        if device == 'cuda':
-            local_params = torch.cat([p.cpu().flatten() for p in self.local_model.parameters()])
-        else:
-            local_params = torch.cat([p.flatten() for p in self.local_model.parameters()])
-        
-        global_params = torch.cat([p.flatten() for p in global_model.parameters()])
-        return local_params - global_params
+        delta_weights = {}
+        for (name, local_param), (_, global_param) in zip(self.local_model.state_dict().items(),
+                                                          global_model.state_dict().items()):
+            delta_weights[name] = (local_param - global_param).float()
+        return delta_weights
     
     def compute_gradient_similarity(self, other_device: 'EdgeDevice') -> float:
         """

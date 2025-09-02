@@ -197,7 +197,7 @@ def print_experiment_info(config: ContinuumFLConfig, args):
     print(f"Run Baselines: {args.run_baselines}")
     print("="*80)
 
-def run_continuum_fl_experiment(config: ContinuumFLConfig) -> (Dict[str, Any], ContinuumFLCoordinator):
+def run_continuum_fl_experiment(config: ContinuumFLConfig) -> (Dict[str, Any], Any):
     """Run the main ContinuumFL experiment"""
     
     print("\n🚀 Starting ContinuumFL Experiment...")
@@ -213,7 +213,6 @@ def run_continuum_fl_experiment(config: ContinuumFLConfig) -> (Dict[str, Any], C
     # Run federated learning
     print("🎯 Starting federated learning...")
     training_results = coordinator.run_federated_learning()
-    print(f"AFTER FL COORDINATOR TRAIN HISTORY: {coordinator.training_history}")
     print("✅ ContinuumFL experiment completed!")
     return training_results, coordinator
 

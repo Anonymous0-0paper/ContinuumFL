@@ -220,7 +220,8 @@ class ContinuumFLCoordinator:
         device_datasets = self.dataset.distribute_data_to_devices(
             list(self.devices.keys()), zone_device_mapping
         )
-        
+
+        zone_dataset_sizes = {}
         # Assign datasets to devices
         for device_id, (train_subset, test_subset) in device_datasets.items():
             if device_id in self.devices:
@@ -228,7 +229,13 @@ class ContinuumFLCoordinator:
                 if train_subset:
                     device.set_local_dataset(train_subset, self.config.batch_size)
                     device.estimate_data_quality()
-        
+
+                    if device.zone_id not in zone_dataset_sizes:
+                        zone_dataset_sizes[device.zone_id] = device.dataset_size
+                    else:
+                        zone_dataset_sizes[device.zone_id] += device.dataset_size
+        for zone_id, zone in self.zones.items():
+            zone.total_dataset_size = zone_dataset_sizes[zone_id]
         # Analyze data distribution
         distribution_analysis = self.dataset.analyze_data_distribution(zones=self.zones)
         self.logger.info(f"Data distribution: {distribution_analysis}")
@@ -262,7 +269,7 @@ class ContinuumFLCoordinator:
                     self.logger.info("Updating zone assignments...")
                     device_list = [d for d in self.devices.values() if d.is_active]
                     self.zones = self.zone_discovery.adaptive_zone_update(device_list, self.zones)
-                
+
                 # 2. Device sampling and local training
                 participating_devices = self._sample_participating_devices()
                 device_updates = self._perform_local_training(participating_devices)
@@ -275,7 +282,11 @@ class ContinuumFLCoordinator:
                     
                     # Update global model
                     if global_weights:
-                        self.global_model.load_state_dict(global_weights)
+                        model_state = self.global_model.state_dict()
+                        for k in model_state.keys():
+                            if model_state[k].dtype.is_floating_point:
+                                model_state[k] += global_weights[k]
+                        self.global_model.load_state_dict(model_state)
                 else:
                     self.logger.warning("No device updates received in this round")
                     aggregation_stats = {"participating_devices": 0, "participating_zones": 0}
@@ -353,7 +364,7 @@ class ContinuumFLCoordinator:
             )
             
             if training_result["success"]:
-                device_updates[device_id] = training_result["model_weights"]
+                device_updates[device_id] = training_result["gradient"]
                 
                 # Update device participation tracking
                 self.device_participation[device_id] += 1
@@ -419,7 +430,7 @@ class ContinuumFLCoordinator:
             criterion = criterion.cuda()
         
         with torch.no_grad():
-            for data, target in test_dataloader:
+            for batch_idx, (data, target) in enumerate(test_dataloader):
                 # Move data to appropriate device
                 if self.config.device == 'cuda' and torch.cuda.is_available():
                     data, target = data.cuda(), target.cuda()
@@ -436,7 +447,9 @@ class ContinuumFLCoordinator:
                 pred = output.argmax(dim=1, keepdim=True)
                 correct += pred.eq(target.view_as(pred)).sum().item()
                 total += target.size(0)
-        
+
+                if batch_idx % 20 == 0:
+                    print(f"Loss: {loss}")
         accuracy = correct / max(total, 1)
         avg_loss = total_loss / max(len(test_dataloader), 1)
         
@@ -462,7 +475,6 @@ class ContinuumFLCoordinator:
                     test_dataloader = self.dataset.get_device_dataloader(
                         device.device_id, is_train=False
                     )
-                    print("Test Size: ", len(test_dataloader))
                     if test_dataloader:
                         for data, labels in test_dataloader:
                             zone_test_data.append(data)
@@ -520,7 +532,7 @@ class ContinuumFLCoordinator:
         
         self.logger.info(
             f"Round {round_num + 1} Results: "
-            f"Accuracy={accuracy:.4f}, Loss={loss:.4f}, "
+            f"Accuracy={accuracy * 100:.4f}%, Loss={loss:.4f}, "
             f"Devices={participating_devices}, Zones={participating_zones}, "
             f"CommCost={comm_cost:.2f}MB, Time={round_time:.2f}s"
         )

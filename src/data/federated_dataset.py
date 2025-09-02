@@ -69,11 +69,11 @@ class FederatedDataset:
             self._prepare_shakespeare()
         else:
             raise ValueError(f"Unsupported dataset: {self.dataset_name}")
-    
+
     def _prepare_cifar100(self):
-        """Prepare CIFAR-100 dataset"""
+        """Prepare CIFAR-100 dataset with random subsets"""
         print("Downloading CIFAR-100 dataset...")
-        
+
         # Define transforms
         transform_train = transforms.Compose([
             transforms.RandomCrop(32, padding=4),
@@ -81,31 +81,33 @@ class FederatedDataset:
             transforms.ToTensor(),
             transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761))
         ])
-        
+
         transform_test = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761))
         ])
-        
-        # Download datasets
-        full_train = torchvision.datasets.CIFAR100(
-            root=self.data_dir, train=True, download=True, transform=transform_train
-        )
-        num_samples = min(len(full_train), self.max_samples) if self.max_samples > 0 else len(full_train)
-        self.train_data = Subset(full_train, range(num_samples))
-        # Attach targets so rest of code works unchanged
-        self.train_data.targets = [full_train.targets[i] for i in self.train_data.indices]
 
-        full_test = torchvision.datasets.CIFAR100(
-            root=self.data_dir, train=False, download=True, transform=transform_test
-        )
-        num_samples = min(len(full_test), self.max_samples) if self.max_samples > 0 else len(full_test)
-        self.test_data = Subset(full_test, range(num_samples))
-        # Attach targets so rest of code works unchanged
-        self.test_data.targets = [full_test.targets[i] for i in self.test_data.indices]
-        
+        # Download full datasets
+        full_train = torchvision.datasets.CIFAR100(root=self.data_dir, train=True, download=True, transform=transform_train)
+        full_test = torchvision.datasets.CIFAR100(root=self.data_dir, train=False, download=True, transform=transform_test)
+
+        # Compute number of samples
+        num_train_samples = min(len(full_train), self.max_samples) if self.max_samples > 0 else len(full_train)
+        num_test_samples = min(len(full_test), self.max_samples) if self.max_samples > 0 else len(full_test)
+
+        # Random indices
+        train_indices = torch.randperm(len(full_train))[:num_train_samples]
+        test_indices = torch.randperm(len(full_test))[:num_test_samples]
+
+        # Create subsets
+        self.train_data = Subset(full_train, train_indices)
+        self.train_data.targets = [full_train.targets[i] for i in train_indices]
+
+        self.test_data = Subset(full_test, test_indices)
+        self.test_data.targets = [full_test.targets[i] for i in test_indices]
+
         print(f"CIFAR-100 loaded: {len(self.train_data)} train, {len(self.test_data)} test samples")
-    
+
     def _prepare_femnist(self):
         """Prepare FEMNIST dataset"""
         print("Preparing FEMNIST dataset...")
@@ -566,7 +568,6 @@ class FederatedDataset:
         
         train_subset, test_subset = self.device_datasets[device_id]
         subset = train_subset if is_train else test_subset
-        print("Test Set has size: ", len(subset))
         if subset is None or len(subset) == 0:
             return None
         

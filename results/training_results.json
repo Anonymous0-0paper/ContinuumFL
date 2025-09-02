@@ -1,11 +1,42 @@
 {
-  "total_rounds": 1,
-  "total_training_time": 22.133739709854126,
-  "final_accuracy": 0.0,
-  "final_loss": 3.980896234512329,
-  "average_round_time": 0.0,
-  "total_communication_cost": 0,
-  "device_participation_stats": {},
+  "total_rounds": 5,
+  "total_training_time": 228.23938703536987,
+  "final_accuracy": 0.034,
+  "final_loss": 4.861546650528908,
+  "average_round_time": 45.64736037254333,
+  "total_communication_cost": 1473.6307861328123,
+  "device_participation_stats": {
+    "device_10": 3,
+    "device_29": 1,
+    "device_19": 2,
+    "device_18": 1,
+    "device_24": 4,
+    "device_22": 5,
+    "device_8": 5,
+    "device_5": 4,
+    "device_16": 1,
+    "device_4": 3,
+    "device_28": 3,
+    "device_1": 4,
+    "device_27": 4,
+    "device_9": 3,
+    "device_6": 5,
+    "device_13": 4,
+    "device_15": 4,
+    "device_3": 4,
+    "device_23": 4,
+    "device_26": 2,
+    "device_0": 5,
+    "device_7": 1,
+    "device_12": 4,
+    "device_20": 4,
+    "device_2": 2,
+    "device_25": 3,
+    "device_17": 2,
+    "device_21": 4,
+    "device_11": 2,
+    "device_14": 1
+  },
   "convergence_rounds": -1,
   "zone_discovery_stats": {
     "rounds_completed": 1,
@@ -13,5 +44,34 @@
     "total_migrations": 0,
     "migration_history_size": 0
   },
-  "aggregation_stats": {}
+  "aggregation_stats": {
+    "total_rounds": 5,
+    "zone_participation_rates": {
+      "zone_0": 1.0,
+      "zone_1": 1.0,
+      "zone_2": 1.0,
+      "zone_3": 1.0,
+      "zone_4": 1.0
+    },
+    "average_communication_cost_mb": 294.72615722656246,
+    "spatial_correlations": {
+      "average": 0.24814484492524463,
+      "maximum": 0.4095099999999999,
+      "total_pairs": 15
+    },
+    "staleness_distribution": {
+      "zone_0": 0,
+      "zone_1": 0,
+      "zone_2": 0,
+      "zone_3": 0,
+      "zone_4": 0
+    },
+    "current_zone_weights": {
+      "zone_0": 0.19999999999999998,
+      "zone_1": 0.19999999999999998,
+      "zone_2": 0.19999999999999998,
+      "zone_3": 0.19999999999999998,
+      "zone_4": 0.19999999999999998
+    }
+  }
 }
