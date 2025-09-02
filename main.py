@@ -28,6 +28,8 @@ def parse_arguments():
     parser.add_argument('--dataset', type=str, default='cifar100', 
                        choices=['cifar100', 'femnist', 'shakespeare'],
                        help='Dataset to use for training')
+    parser.add_argument('--max_samples', type=int, default=-1,
+                        help='Limit Dataset-Size')
     
     # System configuration
     parser.add_argument('--num_devices', type=int, default=100,
@@ -146,7 +148,8 @@ def setup_configuration(args) -> ContinuumFLConfig:
     config.local_epochs = args.local_epochs
     config.learning_rate = args.learning_rate
     config.batch_size = args.batch_size
-    
+    config.max_samples = args.max_samples
+
     # ContinuumFL parameters
     config.similarity_weights['spatial'] = args.spatial_weight
     config.similarity_weights['data'] = args.data_weight
@@ -194,7 +197,7 @@ def print_experiment_info(config: ContinuumFLConfig, args):
     print(f"Run Baselines: {args.run_baselines}")
     print("="*80)
 
-def run_continuum_fl_experiment(config: ContinuumFLConfig) -> Dict[str, Any]:
+def run_continuum_fl_experiment(config: ContinuumFLConfig) -> (Dict[str, Any], Any):
     """Run the main ContinuumFL experiment"""
     
     print("\n🚀 Starting ContinuumFL Experiment...")
@@ -210,17 +213,14 @@ def run_continuum_fl_experiment(config: ContinuumFLConfig) -> Dict[str, Any]:
     # Run federated learning
     print("🎯 Starting federated learning...")
     training_results = coordinator.run_federated_learning()
-    
     print("✅ ContinuumFL experiment completed!")
-    return training_results
+    return training_results, coordinator
 
 def run_baseline_experiments(coordinator: ContinuumFLCoordinator) -> Dict[str, Any]:
     """Run baseline comparison experiments"""
     
     print("\n📊 Running baseline comparisons...")
-    
     baseline_results = coordinator.run_baseline_comparison()
-    
     print("✅ Baseline experiments completed!")
     return baseline_results
 
@@ -293,7 +293,7 @@ def main():
     # Setup configuration
     config = setup_configuration(args)
     config.device = config_device  # Override with checked device
-    
+
     # Adjust batch size and other parameters based on device
     if config.device == 'cpu':
         print("🔧 Optimizing settings for CPU:")
@@ -312,18 +312,16 @@ def main():
     try:
         # Run main ContinuumFL experiment
         training_results, coordinator = run_continuum_fl_experiment(config)
-        
+        print(f"Training Results: {training_results}")
         # Initialize baseline results
         baseline_results = {}
         
         # Run baseline comparisons if requested
         if args.run_baselines:
             baseline_results = run_baseline_experiments(coordinator)
-        
         # Create visualizations if requested
         if args.create_visualizations:
             create_visualizations(coordinator, baseline_results, config)
-        
         # Save results if requested
         if args.save_results:
             save_experiment_results(training_results, baseline_results, config)

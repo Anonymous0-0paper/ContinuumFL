@@ -185,16 +185,16 @@ class Zone:
             if original_dtypes[param_name] != torch.float32:
                 aggregated_weights[param_name] = aggregated_weights[param_name].to(original_dtypes[param_name])
         
-        # Apply gradient compression
-        compressed_weights = self._apply_gradient_compression(aggregated_weights)
+        # Apply gradient compression (temporarily disabled) TODO Fix Compression and replace Weights by Delta-Weights
+        # compressed_weights = self._apply_gradient_compression(aggregated_weights)
         
-        self.aggregated_weights = compressed_weights
+        self.aggregated_weights = aggregated_weights # TODO use compressed weights
         
         # Track aggregation time
         aggregation_time = time.time() - start_time
         self.aggregation_times.append(aggregation_time)
         
-        return compressed_weights
+        return aggregated_weights # TODO return compressed weights
     
     def _apply_gradient_compression(self, weights: Dict[str, torch.Tensor], 
                                   compression_rate: float = 0.1) -> Dict[str, torch.Tensor]:
@@ -230,12 +230,14 @@ class Zone:
         num_devices = len([d for d in self.devices.values() if d.is_active])
         avg_dataset_size = self.total_dataset_size / max(num_devices, 1)
         data_contribution = num_devices * avg_dataset_size
-        
+        print(f"({self.zone_id}) Num Devices {num_devices}, avg dataset size {avg_dataset_size:.2f}")
         # Gradient consistency component
         gradient_variances = []
         for device in self.devices.values():
             if device.is_active and device.gradient_history:
-                grad_norm = torch.norm(device.gradient_history[-1]).item()
+                grad_dict = device.gradient_history[-1]
+                grad_vector = torch.cat([v.flatten() for v in grad_dict.values()])
+                grad_norm = torch.norm(grad_vector).item()
                 gradient_variances.append(grad_norm)
         
         if gradient_variances:

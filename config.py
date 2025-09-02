@@ -59,9 +59,10 @@ class ContinuumFLConfig:
         
         # Dataset Configuration
         self.dataset_name = 'cifar100'   # Options: 'cifar100', 'femnist', 'shakespeare'
+        self.max_samples = 100            # Limit Dataset-Size (use -1 for full dataset)
         self.data_distribution = 'dirichlet'  # Data distribution type
-        self.intra_zone_alpha = 0.8      # Dirichlet α for intra-zone
-        self.inter_zone_alpha = 0.5      # Dirichlet α for inter-zone
+        self.intra_zone_alpha = 1000      # Dirichlet α for intra-zone
+        self.inter_zone_alpha = 1000      # Dirichlet α for inter-zone
         self.train_test_split = 0.8
         
         # Model Configuration

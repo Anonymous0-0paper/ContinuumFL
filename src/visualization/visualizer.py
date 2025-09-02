@@ -274,80 +274,80 @@ class ContinuumFLVisualizer:
         plt.savefig(os.path.join(self.save_dir, save_name), dpi=self.dpi, bbox_inches='tight')
         plt.show()
     
-    def plot_data_distribution_analysis(self, distribution_analysis: Dict[str, Any], 
+    def plot_data_distribution_analysis(self, distribution_analysis: Dict[str, Any],
                                       save_name: str = "data_distribution.png"):
         """Plot data distribution analysis across zones and devices"""
-        
+
         if "zone_stats" not in distribution_analysis:
             print("No data distribution analysis available")
             return
-        
+
         zone_stats = distribution_analysis["zone_stats"]
-        
+
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 12))
-        
+
         # Plot 1: Devices per zone
         zone_ids = list(zone_stats.keys())
         devices_per_zone = [zone_stats[zone_id]["devices"] for zone_id in zone_ids]
-        
+
         ax1.bar(zone_ids, devices_per_zone, alpha=0.7, edgecolor='black')
         ax1.set_xlabel('Zone ID')
         ax1.set_ylabel('Number of Devices')
         ax1.set_title('Devices per Zone')
         ax1.tick_params(axis='x', rotation=45)
-        
+
         # Plot 2: Samples per zone
         samples_per_zone = [zone_stats[zone_id]["total_samples"] for zone_id in zone_ids]
-        
+
         ax2.bar(zone_ids, samples_per_zone, alpha=0.7, edgecolor='black', color='orange')
         ax2.set_xlabel('Zone ID')
         ax2.set_ylabel('Total Samples')
         ax2.set_title('Data Samples per Zone')
         ax2.tick_params(axis='x', rotation=45)
-        
+
         # Plot 3: Class distribution across zones (if available)
         if zone_ids and "class_distribution" in zone_stats[zone_ids[0]]:
             class_distributions = []
             all_classes = set()
-            
+
             for zone_id in zone_ids:
                 class_dist = zone_stats[zone_id]["class_distribution"]
                 class_distributions.append(class_dist)
                 all_classes.update(class_dist.keys())
-            
+
             # Create stacked bar chart for class distribution
             all_classes = sorted(list(all_classes))[:10]  # Show top 10 classes
             bottom = np.zeros(len(zone_ids))
-            
+
             colors = plt.cm.Set3(np.linspace(0, 1, len(all_classes)))
-            
+
             for i, class_id in enumerate(all_classes):
                 class_counts = []
                 for zone_id in zone_ids:
-                    count = zone_stats[zone_id]["class_distribution"].get(str(class_id), 0)
+                    count = zone_stats[zone_id]["class_distribution"].get(class_id, 0)
                     class_counts.append(count)
-                
-                ax3.bar(zone_ids, class_counts, bottom=bottom, 
+
+                ax3.bar(zone_ids, class_counts, bottom=bottom,
                        label=f'Class {class_id}', color=colors[i], alpha=0.8)
                 bottom += np.array(class_counts)
-            
+
             ax3.set_xlabel('Zone ID')
             ax3.set_ylabel('Number of Samples')
             ax3.set_title('Class Distribution per Zone')
             ax3.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
             ax3.tick_params(axis='x', rotation=45)
-        
+
         # Plot 4: Device resource distribution
         if "device_stats" in distribution_analysis:
             device_stats = distribution_analysis["device_stats"]
             sample_counts = [stats["total_samples"] for stats in device_stats.values()]
-            
+
             ax4.hist(sample_counts, bins=20, alpha=0.7, edgecolor='black')
             ax4.set_xlabel('Samples per Device')
             ax4.set_ylabel('Number of Devices')
             ax4.set_title('Device Sample Distribution')
             ax4.grid(True, alpha=0.3)
-        
+
         plt.tight_layout()
         plt.savefig(os.path.join(self.save_dir, save_name), dpi=self.dpi, bbox_inches='tight')
         plt.show()
@@ -414,11 +414,11 @@ class ContinuumFLVisualizer:
         """Create a comprehensive visualization report"""
         
         print("Creating comprehensive visualization report...")
-        
+
         # Get system status and data
         training_history = list(coordinator.training_history)
         aggregation_stats = coordinator.aggregator.get_aggregation_stats()
-        
+
         # 1. Training curves
         self.plot_training_curves(training_history, baseline_results, "01_training_curves.png")
         
@@ -443,7 +443,9 @@ class ContinuumFLVisualizer:
         
         # 8. Data distribution
         if hasattr(coordinator.dataset, 'analyze_data_distribution'):
-            distribution_analysis = coordinator.dataset.analyze_data_distribution()
+            distribution_analysis = coordinator.dataset.analyze_data_distribution(zones=coordinator.zones)
+            with open(os.path.join(self.save_dir, "distribution_analysis.json"), 'w') as f:
+                json.dump(distribution_analysis, f, indent=2, default=str)
             self.plot_data_distribution_analysis(distribution_analysis, "08_data_distribution.png")
         
         # 9. Convergence analysis

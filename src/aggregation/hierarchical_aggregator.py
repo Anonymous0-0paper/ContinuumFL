@@ -95,6 +95,7 @@ class HierarchicalAggregator:
         Implements Equation (13): β_k^base = Score_k / Σ Score_j
         """
         contribution_scores = self.compute_zone_contribution_scores(zones)
+        print(f"Contribution Scores: {contribution_scores}")
         self.zone_base_weights = contribution_scores.copy()
         return self.zone_base_weights
     
@@ -208,7 +209,7 @@ class HierarchicalAggregator:
                     
                     self.spatial_correlations[correlation_key] = updated_correlation
     
-    def compute_spatial_regularization_term(self, zone_weights: Dict[str, torch.Tensor], 
+    def compute_spatial_regularization_term(self, zone_weights: Dict[str, Dict[str, torch.Tensor]],
                                           zones: Dict[str, Zone]) -> torch.Tensor:
         """
         Compute spatial regularization term for inter-zone aggregation.
@@ -287,7 +288,7 @@ class HierarchicalAggregator:
         base_weights = self.compute_zone_base_weights(zones)
         fair_weights = self.apply_fairness_adjustment(base_weights)
         final_weights = self.apply_staleness_penalty(fair_weights)
-        
+        print(f"Fair Weights: {final_weights}")
         # Update spatial correlations
         self.update_spatial_correlations(zones)
         

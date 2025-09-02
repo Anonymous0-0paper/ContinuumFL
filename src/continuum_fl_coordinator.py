@@ -165,16 +165,33 @@ class ContinuumFLCoordinator:
     def _create_edge_devices(self):
         """Create edge devices with heterogeneous resources and spatial distribution"""
         region_width, region_height = self.config.region_size
-        
-        for i in range(self.config.num_devices):
-            device_id = f"device_{i}"
-            
+        num_physical_zones = self.config.num_zones
+        physical_zone_locations = []
+        physical_zone_sizes = []
+        for physical_zone in range(num_physical_zones):
             # Generate random location within region
             location = (
                 np.random.uniform(0, region_width),
                 np.random.uniform(0, region_height)
             )
-            
+            size = np.random.uniform(1, 5)
+
+            physical_zone_locations.append(location)
+            physical_zone_sizes.append(size)
+
+        for i in range(self.config.num_devices):
+            device_id = f"device_{i}"
+            physical_zone_assignment = np.random.choice(num_physical_zones, 1)[0]
+
+            # Generate random location within zone
+            x = np.random.normal(physical_zone_locations[physical_zone_assignment][0], physical_zone_sizes[physical_zone_assignment])
+            x = np.clip(x, 0, region_width)
+
+            y = np.random.normal(physical_zone_locations[physical_zone_assignment][1], physical_zone_sizes[physical_zone_assignment])
+            y = np.clip(y, 0, region_height)
+
+            location = (x, y)
+
             # Generate heterogeneous resources
             compute_capacity = np.random.uniform(*self.config.device_compute_range)
             memory_capacity = np.random.uniform(*self.config.device_memory_range)
@@ -203,7 +220,8 @@ class ContinuumFLCoordinator:
         device_datasets = self.dataset.distribute_data_to_devices(
             list(self.devices.keys()), zone_device_mapping
         )
-        
+
+        zone_dataset_sizes = {}
         # Assign datasets to devices
         for device_id, (train_subset, test_subset) in device_datasets.items():
             if device_id in self.devices:
@@ -211,9 +229,15 @@ class ContinuumFLCoordinator:
                 if train_subset:
                     device.set_local_dataset(train_subset, self.config.batch_size)
                     device.estimate_data_quality()
-        
+
+                    if device.zone_id not in zone_dataset_sizes:
+                        zone_dataset_sizes[device.zone_id] = device.dataset_size
+                    else:
+                        zone_dataset_sizes[device.zone_id] += device.dataset_size
+        for zone_id, zone in self.zones.items():
+            zone.total_dataset_size = zone_dataset_sizes[zone_id]
         # Analyze data distribution
-        distribution_analysis = self.dataset.analyze_data_distribution()
+        distribution_analysis = self.dataset.analyze_data_distribution(zones=self.zones)
         self.logger.info(f"Data distribution: {distribution_analysis}")
     
     def _setup_device_models(self):
@@ -245,7 +269,7 @@ class ContinuumFLCoordinator:
                     self.logger.info("Updating zone assignments...")
                     device_list = [d for d in self.devices.values() if d.is_active]
                     self.zones = self.zone_discovery.adaptive_zone_update(device_list, self.zones)
-                
+
                 # 2. Device sampling and local training
                 participating_devices = self._sample_participating_devices()
                 device_updates = self._perform_local_training(participating_devices)
@@ -258,7 +282,11 @@ class ContinuumFLCoordinator:
                     
                     # Update global model
                     if global_weights:
-                        self.global_model.load_state_dict(global_weights)
+                        model_state = self.global_model.state_dict()
+                        for k in model_state.keys():
+                            if model_state[k].dtype.is_floating_point:
+                                model_state[k] += global_weights[k]
+                        self.global_model.load_state_dict(model_state)
                 else:
                     self.logger.warning("No device updates received in this round")
                     aggregation_stats = {"participating_devices": 0, "participating_zones": 0}
@@ -336,7 +364,7 @@ class ContinuumFLCoordinator:
             )
             
             if training_result["success"]:
-                device_updates[device_id] = training_result["model_weights"]
+                device_updates[device_id] = training_result["gradient"]
                 
                 # Update device participation tracking
                 self.device_participation[device_id] += 1
@@ -402,7 +430,7 @@ class ContinuumFLCoordinator:
             criterion = criterion.cuda()
         
         with torch.no_grad():
-            for data, target in test_dataloader:
+            for batch_idx, (data, target) in enumerate(test_dataloader):
                 # Move data to appropriate device
                 if self.config.device == 'cuda' and torch.cuda.is_available():
                     data, target = data.cuda(), target.cuda()
@@ -419,7 +447,9 @@ class ContinuumFLCoordinator:
                 pred = output.argmax(dim=1, keepdim=True)
                 correct += pred.eq(target.view_as(pred)).sum().item()
                 total += target.size(0)
-        
+
+                if batch_idx % 20 == 0:
+                    print(f"Loss: {loss}")
         accuracy = correct / max(total, 1)
         avg_loss = total_loss / max(len(test_dataloader), 1)
         
@@ -502,7 +532,7 @@ class ContinuumFLCoordinator:
         
         self.logger.info(
             f"Round {round_num + 1} Results: "
-            f"Accuracy={accuracy:.4f}, Loss={loss:.4f}, "
+            f"Accuracy={accuracy * 100:.4f}%, Loss={loss:.4f}, "
             f"Devices={participating_devices}, Zones={participating_zones}, "
             f"CommCost={comm_cost:.2f}MB, Time={round_time:.2f}s"
         )
@@ -684,7 +714,3 @@ class ContinuumFLCoordinator:
         
         # Reset tracking variables
         self.current_round = 0
-        self.training_history.clear()
-        self.accuracies.clear()
-        self.losses.clear()
-        self.communication_costs.clear()

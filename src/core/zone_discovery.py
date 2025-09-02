@@ -59,7 +59,8 @@ class ZoneDiscovery:
         # Spatial similarity - Equation (6)
         distance = device_i.compute_spatial_distance(device_j)
         spatial_sim = np.exp(-distance / self.distance_scaling)
-        
+        if self.current_round == 0:
+            return spatial_sim
         # Data similarity - Equation (7) 
         data_sim = device_i.compute_gradient_similarity(device_j)
         
@@ -96,12 +97,11 @@ class ZoneDiscovery:
         n_devices = len(devices)
         
         # Initialize each device as a singleton cluster
-        clusters = [set([i]) for i in range(n_devices)]
-        
+        clusters = [{i} for i in range(n_devices)]
+        print(f"Hierarchical clustering for {self.config.num_zones} zones.")
         while len(clusters) > self.config.num_zones:
             # Compute similarity matrix for current clusters
             cluster_similarities = self._compute_cluster_similarities(clusters, devices)
-            
             # Find most similar cluster pair
             max_sim = -1
             best_pair = None
@@ -121,7 +121,6 @@ class ZoneDiscovery:
             # If no valid merge found, break
             if best_pair is None:
                 break
-            
             # Merge the best pair
             i, j = best_pair
             merged_cluster = clusters[i].union(clusters[j])
@@ -365,7 +364,7 @@ class ZoneDiscovery:
         
         # Hierarchical clustering
         clusters = self.hierarchical_clustering(active_devices)
-        
+        print(f"HIERARCHICAL CLUSTERING: {clusters}")
         # Phase 2: Size constraint enforcement
         clusters = self.split_large_clusters(clusters, active_devices)
         clusters = self.merge_small_clusters(clusters, active_devices)

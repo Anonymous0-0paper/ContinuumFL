@@ -4,16 +4,24 @@ Handles dataset downloading, preprocessing, and non-IID distribution across zone
 """
 
 import os
+import random
+from math import floor
+
+import datasets
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, Subset
 import torchvision
 import torchvision.transforms as transforms
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Dict, List, Tuple, Optional, Any, Union
 import pickle
 import json
 from collections import defaultdict
+from datasets import load_dataset, DownloadConfig
+from src.core.zone import Zone
+from src.models.model_factory import FEMNISTNet
+
 try:
     import requests
 except ImportError:
@@ -33,7 +41,7 @@ class FederatedDataset:
         self.config = config
         self.data_dir = data_dir
         self.dataset_name = config.dataset_name
-        
+        self.num_classes = None
         # Distribution parameters
         self.intra_zone_alpha = config.intra_zone_alpha  # Dirichlet α for intra-zone
         self.inter_zone_alpha = config.inter_zone_alpha  # Dirichlet α for inter-zone
@@ -44,7 +52,10 @@ class FederatedDataset:
         self.test_data = None
         self.device_datasets: Dict[str, Dict[str, Any]] = {}
         self.zone_distributions: Dict[str, np.ndarray] = {}
-        
+
+        # Dataset size limitation
+        self.max_samples = config.max_samples
+
         # Create data directory
         os.makedirs(data_dir, exist_ok=True)
     
@@ -58,11 +69,11 @@ class FederatedDataset:
             self._prepare_shakespeare()
         else:
             raise ValueError(f"Unsupported dataset: {self.dataset_name}")
-    
+
     def _prepare_cifar100(self):
-        """Prepare CIFAR-100 dataset"""
+        """Prepare CIFAR-100 dataset with random subsets"""
         print("Downloading CIFAR-100 dataset...")
-        
+
         # Define transforms
         transform_train = transforms.Compose([
             transforms.RandomCrop(32, padding=4),
@@ -70,23 +81,33 @@ class FederatedDataset:
             transforms.ToTensor(),
             transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761))
         ])
-        
+
         transform_test = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761))
         ])
-        
-        # Download datasets
-        self.train_data = torchvision.datasets.CIFAR100(
-            root=self.data_dir, train=True, download=True, transform=transform_train
-        )
-        
-        self.test_data = torchvision.datasets.CIFAR100(
-            root=self.data_dir, train=False, download=True, transform=transform_test
-        )
-        
+
+        # Download full datasets
+        full_train = torchvision.datasets.CIFAR100(root=self.data_dir, train=True, download=True, transform=transform_train)
+        full_test = torchvision.datasets.CIFAR100(root=self.data_dir, train=False, download=True, transform=transform_test)
+
+        # Compute number of samples
+        num_train_samples = min(len(full_train), self.max_samples) if self.max_samples > 0 else len(full_train)
+        num_test_samples = min(len(full_test), self.max_samples) if self.max_samples > 0 else len(full_test)
+
+        # Random indices
+        train_indices = torch.randperm(len(full_train))[:num_train_samples]
+        test_indices = torch.randperm(len(full_test))[:num_test_samples]
+
+        # Create subsets
+        self.train_data = Subset(full_train, train_indices)
+        self.train_data.targets = [full_train.targets[i] for i in train_indices]
+
+        self.test_data = Subset(full_test, test_indices)
+        self.test_data.targets = [full_test.targets[i] for i in test_indices]
+
         print(f"CIFAR-100 loaded: {len(self.train_data)} train, {len(self.test_data)} test samples")
-    
+
     def _prepare_femnist(self):
         """Prepare FEMNIST dataset"""
         print("Preparing FEMNIST dataset...")
@@ -99,109 +120,155 @@ class FederatedDataset:
                 train_dict = pickle.load(f)
             with open(os.path.join(femnist_path, 'test.pkl'), 'rb') as f:
                 test_dict = pickle.load(f)
-            
-            self.train_data = self._dict_to_dataset(train_dict)
-            self.test_data = self._dict_to_dataset(test_dict)
+
+            train_ds = self._dict_to_dataset(train_dict)
+            test_ds = self._dict_to_dataset(test_dict)
+
+            self.process_femnist(train_ds, test_ds)
             return
         
         # Download and process FEMNIST
         self._download_femnist()
-    
+
+    class FEMNISTDataset(Dataset):
+        def __init__(self, ds, transform=None):
+            self.images = ds['image']
+            self.targets = ds['character']
+            self.transform = transform
+        def __len__(self):
+            return len(self.targets)
+
+        def __getitem__(self, idx):
+            image = self.images[idx]
+            label = self.targets[idx]
+            if self.transform:
+                image = self.transform(image)
+            return image, label
+
     def _download_femnist(self):
         """Download and process FEMNIST dataset"""
-        femnist_url = "https://github.com/TalwalkarLab/leaf/raw/master/data/femnist/data/all_data.zip"
         femnist_path = os.path.join(self.data_dir, 'femnist')
         os.makedirs(femnist_path, exist_ok=True)
         
         # Download if not exists
-        zip_path = os.path.join(femnist_path, 'all_data.zip')
-        if not os.path.exists(zip_path):
-            if requests:
-                print("Downloading FEMNIST data...")
-                response = requests.get(femnist_url)
-                with open(zip_path, 'wb') as f:
-                    f.write(response.content)
-            else:
-                print("Warning: requests not available, cannot download FEMNIST data")
-                return
-        
-        # Extract and process
-        if zipfile:
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(femnist_path)
-        else:
-            print("Warning: zipfile not available, cannot extract FEMNIST data")
-            return
-        
-        # Process JSON files to create unified dataset
-        self._process_femnist_json(femnist_path)
-    
-    def _process_femnist_json(self, femnist_path: str):
-        """Process FEMNIST JSON files"""
-        train_files = []
-        test_files = []
-        
-        data_dir = os.path.join(femnist_path, 'all_data')
-        
-        # Find train and test files
-        for root, dirs, files in os.walk(data_dir):
-            for file in files:
-                if file.endswith('.json'):
-                    if 'train' in file:
-                        train_files.append(os.path.join(root, file))
-                    elif 'test' in file:
-                        test_files.append(os.path.join(root, file))
-        
-        # Process train data
-        train_data = {'images': [], 'labels': []}
-        for file_path in train_files:
-            with open(file_path, 'r') as f:
-                data = json.load(f)
-                for user in data['users']:
-                    train_data['images'].extend(data['user_data'][user]['x'])
-                    train_data['labels'].extend(data['user_data'][user]['y'])
-        
-        # Process test data
-        test_data = {'images': [], 'labels': []}
-        for file_path in test_files:
-            with open(file_path, 'r') as f:
-                data = json.load(f)
-                for user in data['users']:
-                    test_data['images'].extend(data['user_data'][user]['x'])
-                    test_data['labels'].extend(data['user_data'][user]['y'])
-        
-        # Convert to tensors
-        train_data['images'] = torch.tensor(train_data['images']).float().reshape(-1, 1, 28, 28) / 255.0
-        train_data['labels'] = torch.tensor(train_data['labels']).long()
-        test_data['images'] = torch.tensor(test_data['images']).float().reshape(-1, 1, 28, 28) / 255.0
-        test_data['labels'] = torch.tensor(test_data['labels']).long()
-        
-        # Save processed data
+        download_config = DownloadConfig(cache_dir=femnist_path)
+        dataset = load_dataset('flwrlabs/femnist', download_config=download_config)
+
+        split_ds = dataset['train'].train_test_split(test_size=0.2, seed=42)
+
+        train_ds = split_ds['train']
+        test_ds = split_ds['test']
+
+        train_dict = {
+            'image': train_ds['image'],
+            'character': train_ds['character'],
+        }
         with open(os.path.join(femnist_path, 'train.pkl'), 'wb') as f:
-            pickle.dump(train_data, f)
+            pickle.dump(train_dict, f)
+        del train_dict
+
+        test_dict = {
+            'image': test_ds['image'],
+            'character': test_ds['character'],
+        }
         with open(os.path.join(femnist_path, 'test.pkl'), 'wb') as f:
-            pickle.dump(test_data, f)
-        
-        self.train_data = self._dict_to_dataset(train_data)
-        self.test_data = self._dict_to_dataset(test_data)
-        
+            pickle.dump(test_dict, f)
+        del test_dict
+
+        self.process_femnist(train_ds, test_ds)
+
+    def process_femnist(self, train_ds, test_ds):
+        """Process FEMNIST dataset"""
+
+        len_train_set = len(train_ds)
+        num_samples = min(self.max_samples, len_train_set) if self.max_samples > 0 else len_train_set
+        if num_samples < len_train_set:
+            train_ds = train_ds.train_test_split(test_size=1 - (num_samples / len_train_set), seed=42)['train']
+            test_ds = test_ds.train_test_split(test_size=(num_samples / len_train_set), seed=42)['test']
+
+        train_ds = train_ds.remove_columns([col for col in train_ds.column_names if col not in ['image', 'character']])
+        test_ds = test_ds.remove_columns([col for col in test_ds.column_names if col not in ['image', 'character']])
+
+        transform = transforms.Compose([
+            transforms.Grayscale(num_output_channels=1),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5,), (0.5,)),
+        ])
+
+        self.train_data = self.FEMNISTDataset(train_ds, transform=transform)
+        self.test_data = self.FEMNISTDataset(test_ds, transform=transform)
+
         print(f"FEMNIST processed: {len(self.train_data)} train, {len(self.test_data)} test samples")
-    
-    def _dict_to_dataset(self, data_dict: Dict[str, torch.Tensor]) -> Dataset:
+
+    def _dict_to_dataset(self, data_dict: Dict[str, torch.Tensor]) -> Any:
         """Convert dictionary to PyTorch dataset"""
-        class DictDataset(Dataset):
-            def __init__(self, images, labels):
-                self.images = images
-                self.labels = labels
-            
+
+        class CustomDataset(Dataset):
+            def __init__(self, data_dict: Dict[str, torch.Tensor]):
+                self.data = data_dict
+
             def __len__(self):
-                return len(self.images)
-            
-            def __getitem__(self, idx):
-                return self.images[idx], self.labels[idx]
-        
-        return DictDataset(data_dict['images'], data_dict['labels'])
-    
+                return len(self.data['image'])
+
+            def __getitem__(self, idx_or_key):
+                if isinstance(idx_or_key, str):
+                    return self.data[idx_or_key]
+                return {
+                    'image': self.data['image'][idx_or_key],
+                    'character': self.data['character'][idx_or_key]
+                }
+
+            @property
+            def column_names(self):
+                return self.data.keys()
+
+            def remove_columns(self, cols: Union[str, List[str]]):
+                """Return a new dataset with some columns removed"""
+                if isinstance(cols, str):
+                    cols = [cols]
+                new_data = {k: v for k, v in self.data.items() if k not in cols}
+                return CustomDataset(new_data)
+
+            def __getitem_by_key__(self, key):
+                return self.data[key]
+
+        return CustomDataset(data_dict)
+
+    class ShakespeareDataset(torch.utils.data.Dataset):
+        def __init__(self, text, seq_length=80, step=1):
+            self.data_len = max(0, (len(text) - seq_length - 1) // step + 1)
+            self.text = text[:self.data_len * step + seq_length]
+            self.seq_length = seq_length
+            self.step = step
+            self.vocab = sorted(set(text))
+            self.num_classes = len(self.vocab)
+            self.stoi = {ch: i for i, ch in enumerate(self.vocab)}
+            self.itos = {i: ch for i, ch in enumerate(self.vocab)}
+
+            self.targets = torch.tensor(
+                [self.stoi[text[i * step + seq_length]] for i in range(self.data_len)],
+                dtype=torch.long
+            )
+
+        def __len__(self):
+            return self.data_len
+
+        def __getitem__(self, idx):
+            start = idx * self.step
+            end = start + self.seq_length
+
+            # Make sure we never step out of range
+            if end >= len(self.text) - 1:
+                end = len(self.text) - self.seq_length - 1
+                start = end - self.seq_length
+
+            seq = self.text[start:end]
+            target = self.text[end]
+
+            seq_tensor = torch.tensor([self.stoi[c] for c in seq], dtype=torch.long)
+            target_tensor = torch.tensor(self.stoi[target], dtype=torch.long)
+            return seq_tensor, target_tensor
+
     def _prepare_shakespeare(self):
         """Prepare Shakespeare dataset"""
         print("Preparing Shakespeare dataset...")
@@ -213,81 +280,66 @@ class FederatedDataset:
         if os.path.exists(os.path.join(shakespeare_path, 'train.pkl')):
             print("Loading existing Shakespeare data...")
             with open(os.path.join(shakespeare_path, 'train.pkl'), 'rb') as f:
-                self.train_data = pickle.load(f)
+                train_text = pickle.load(f)
+                len_trainset = len(train_text)
+                num_samples = min(self.max_samples, len_trainset) if self.max_samples > 0 else len_trainset
+                train_step = len_trainset // num_samples
+                self.train_data = self.ShakespeareDataset(train_text, seq_length=80, step=train_step)
+
             with open(os.path.join(shakespeare_path, 'test.pkl'), 'rb') as f:
-                self.test_data = pickle.load(f)
+                test_text = pickle.load(f)
+                len_testset = len(test_text)
+                test_step = len_testset // floor((num_samples / len_trainset) * len_testset)
+                self.test_data = self.ShakespeareDataset(test_text, seq_length=80, step=test_step)
+            print(f"Train step: {train_step}, Test step: {test_step}")
             return
         
         # Download and process Shakespeare data
         self._download_shakespeare()
-    
+
     def _download_shakespeare(self):
-        """Download and process Shakespeare dataset"""
-        # This is a simplified version - in practice, you'd download from LEAF
-        print("Creating synthetic Shakespeare dataset...")
-        
-        # Simple character-level text data simulation
-        vocab = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?'-"
-        seq_length = 80
-        
-        # Generate synthetic Shakespeare-like text
-        np.random.seed(42)
-        train_sequences = []
-        train_targets = []
-        
-        for _ in range(10000):  # Generate 10k sequences
-            seq = np.random.choice(list(vocab), seq_length)
-            target = np.random.choice(list(vocab))
-            
-            # Convert to indices
-            seq_indices = [vocab.index(c) for c in seq]
-            target_index = vocab.index(target)
-            
-            train_sequences.append(seq_indices)
-            train_targets.append(target_index)
-        
-        # Test data
-        test_sequences = []
-        test_targets = []
-        
-        for _ in range(2000):  # Generate 2k test sequences
-            seq = np.random.choice(list(vocab), seq_length)
-            target = np.random.choice(list(vocab))
-            
-            seq_indices = [vocab.index(c) for c in seq]
-            target_index = vocab.index(target)
-            
-            test_sequences.append(seq_indices)
-            test_targets.append(target_index)
-        
-        # Convert to tensors
-        train_data = {
-            'sequences': torch.tensor(train_sequences).long(),
-            'targets': torch.tensor(train_targets).long()
-        }
-        
-        test_data = {
-            'sequences': torch.tensor(test_sequences).long(),
-            'targets': torch.tensor(test_targets).long()
-        }
-        
-        # Save vocabulary
-        vocab_path = os.path.join(self.data_dir, 'shakespeare', 'vocab.txt')
-        with open(vocab_path, 'w') as f:
-            f.write(vocab)
-        
-        # Save processed data
         shakespeare_path = os.path.join(self.data_dir, 'shakespeare')
+        os.makedirs(shakespeare_path, exist_ok=True)
+
+        # Load dataset from Hugging Face
+        download_config = DownloadConfig(cache_dir=shakespeare_path)
+        dataset = load_dataset("flwrlabs/shakespeare", download_config=download_config)
+
+        # Concatenate all lines into one string
+        full_text = "".join(dataset["train"]["x"])
+
+        # Limit dataset size
+        max_chars = 3_000_000
+        full_text = full_text[:max_chars]
+
+        # Simple 80/20 split preserving text order
+        split_point = int(0.8 * len(full_text))
+        train_text = full_text[:split_point]
+        test_text = full_text[split_point:]
+
+        # Convert to lists for consistency with your existing code
+        train_text = list(train_text)
+        test_text = list(test_text)
+
+        # Save raw train/test texts
         with open(os.path.join(shakespeare_path, 'train.pkl'), 'wb') as f:
-            pickle.dump(train_data, f)
+            pickle.dump(train_text, f)
         with open(os.path.join(shakespeare_path, 'test.pkl'), 'wb') as f:
-            pickle.dump(test_data, f)
-        
-        self.train_data = self._text_dict_to_dataset(train_data)
-        self.test_data = self._text_dict_to_dataset(test_data)
-        
+            pickle.dump(test_text, f)
+
+        # Wrap as Dataset objects
+        len_trainset = len(train_text)
+        len_testset = len(test_text)
+        num_samples = min(self.max_samples, len_trainset) if self.max_samples > 0 else len_trainset
+
+        train_step = len_trainset // num_samples
+        test_step = len_testset // floor((num_samples / len_trainset) * len_testset)
+        print(f"Train step: {train_step}, Test step: {test_step}")
+        self.train_data = self.ShakespeareDataset(train_text, seq_length=80, step=train_step)
+        self.test_data = self.ShakespeareDataset(test_text, seq_length=80, step=test_step)
+
         print(f"Shakespeare processed: {len(self.train_data)} train, {len(self.test_data)} test samples")
-    
+
     def _text_dict_to_dataset(self, data_dict: Dict[str, torch.Tensor]) -> Dataset:
         """Convert text dictionary to PyTorch dataset"""
         class TextDataset(Dataset):
@@ -297,7 +349,7 @@ class FederatedDataset:
             
             def __len__(self):
                 return len(self.sequences)
-            
+
             def __getitem__(self, idx):
                 return self.sequences[idx], self.targets[idx]
         
@@ -340,10 +392,11 @@ class FederatedDataset:
         elif self.dataset_name.lower() == 'femnist':
             num_classes = 62
         elif self.dataset_name.lower() == 'shakespeare':
-            num_classes = len("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?'-")
+            num_classes = self.train_data.num_classes
+            print(f"Shakespeare has {num_classes} classes.")
         else:
             num_classes = 10  # Default
-        
+        self.num_classes = num_classes
         # Create zone distributions
         num_zones = len(zones)
         zone_distributions = self.create_zone_distributions(num_zones, num_classes)
@@ -371,64 +424,139 @@ class FederatedDataset:
         
         # Distribute data to devices
         device_datasets = {}
-        
+        rng = np.random.default_rng(42)
+
+        # ===Train set partitioning===
+        device_train_indices = {}
+
+        # Assign indices to zones
+        zone_indices = {}
+        zone_distribution_cache = {}
+        device_distribution_cache = {}
+        for clazz in train_class_indices.keys():
+            # Get all indices for class and shuffle
+            class_indices = train_class_indices[clazz]
+            rng.shuffle(class_indices)
+
+            # Cache Zone Distributions for test set partitioning later
+            zone_distributions = dict(zip(list(zones.keys()), rng.dirichlet([self.inter_zone_alpha] * num_zones)))
+            zone_distribution_cache[clazz] = zone_distributions
+            # Calculate Number of examples each zone gets
+            counts = {zone_id : int(zone_distributions[zone_id] * len(class_indices)) for zone_id in zones.keys()}
+
+            # Fix rounding errors safely
+            while np.array(list(counts.values())).sum() < len(class_indices): counts[max(zone_distributions, key=zone_distributions.get)] += 1
+            while np.array(list(counts.values())).sum() > len(class_indices): counts[max(zone_distributions, key=zone_distributions.get)] -= 1
+
+            # assign indices to zones
+            start = 0
+            for zone_id, device_list in zones.items():
+                if zone_id not in zone_indices:
+                    zone_indices[zone_id] = {clazz: class_indices[start:start + counts[zone_id]]}
+                else:
+                    zone_indices[zone_id][clazz] = class_indices[start:start + counts[zone_id]]
+                start += counts[zone_id]
+
+        # Split Zone Data for devices
         for zone_id, device_list in zones.items():
-            zone_dist = zone_distributions[zone_id]
-            
-            # Calculate total samples for this zone
-            zone_devices = len(device_list)
-            samples_per_device = len(self.train_data) // len(devices)
-            
+            # Get Zone data and number of devices in zone
+            zn_idxs = zone_indices[zone_id]
+            num_devices = len(device_list)
+            # class-wise splitting
+            for clazz in zn_idxs.keys():
+                # Get all indices for class and shuffle
+                class_indices = zn_idxs[clazz]
+                rng.shuffle(class_indices)
+
+                # Cache Zone Distributions for test set partitioning later
+                device_distributions = dict(zip(device_list, rng.dirichlet([self.intra_zone_alpha] * num_devices)))
+                if clazz not in device_distribution_cache:
+                    device_distribution_cache[clazz] = device_distributions
+                else:
+                    for device_id, value in device_distributions.items():
+                        if device_id not in device_distribution_cache[clazz]:
+                            device_distribution_cache[clazz][device_id] = value
+
+                # Calculate Number of examples each device gets
+                counts = {device_id: int(device_distributions[device_id] * len(class_indices)) for device_id in device_list}
+
+                # Fix rounding errors safely
+                while np.array(list(counts.values())).sum() < len(class_indices):
+                    counts[max(counts.keys(), key=lambda d: device_distributions[d])] += 1
+
+                while np.array(list(counts.values())).sum() > len(class_indices):
+                    counts[max(counts.keys(), key=lambda d: device_distributions[d])] -= 1
+
+                # assign indices to devices
+                start = 0
+                for device_id in device_list:
+                    if device_id not in device_train_indices:
+                        device_train_indices[device_id] = {}
+                    device_train_indices[device_id][clazz] = class_indices[start:start + counts[device_id]]
+
+        for zone_id in zones.keys():
+            num_samples = 0
+            for clazz in zone_indices[zone_id].keys():
+                num_samples += len(zone_indices[zone_id][clazz])
+
+        # ===Test set partitioning===
+        device_test_indices = {}
+
+        for clazz in test_class_indices.keys():
+            class_indices = test_class_indices[clazz]
+            rng.shuffle(class_indices)
+
+            zone_distributions = zone_distribution_cache[clazz]
+            counts = {zone_id: int(zone_distributions[zone_id] * len(class_indices)) for zone_id in zones.keys()}
+            while np.array(list(counts.values())).sum() < len(class_indices): counts[
+                max(zone_distributions, key=zone_distributions.get)] += 1
+            while np.array(list(counts.values())).sum() > len(class_indices): counts[
+                max(zone_distributions, key=zone_distributions.get)] -= 1
+
+            start = 0
+            for zone_id, device_list in zones.items():
+                if zone_id not in zone_indices:
+                    zone_indices[zone_id] = {}
+                zone_indices[zone_id][clazz] = class_indices[start:start + counts[zone_id]]
+                start += counts[zone_id]
+        total_samples = 0
+        for zone_id, device_list in zones.items():
+            zn_idxs = zone_indices[zone_id]
+
+            for clazz in zn_idxs:
+                class_indices = zn_idxs[clazz]
+                rng.shuffle(class_indices)
+
+                device_distributions = device_distribution_cache[clazz]
+                counts = {device_id: int(device_distributions[device_id] * len(class_indices)) for device_id in device_list}
+                while np.array(list(counts.values())).sum() < len(class_indices):
+                    counts[max(counts.keys(), key=lambda d: device_distributions[d])] += 1
+
+                while np.array(list(counts.values())).sum() > len(class_indices):
+                    counts[max(counts.keys(), key=lambda d: device_distributions[d])] -= 1
+
+                start = 0
+                for device_id in device_list:
+                    if device_id not in device_test_indices:
+                        device_test_indices[device_id] = {}
+                    device_test_indices[device_id][clazz] = class_indices[start:start + counts[device_id]]
+                    start += counts[device_id]
+
+            # Create subsets
+
             for device_id in device_list:
-                # Sample number of samples per class for this device
-                device_class_counts = np.random.multinomial(
-                    samples_per_device, zone_dist
-                )
-                
-                # Add some intra-zone variation
-                device_variation = np.random.dirichlet([self.intra_zone_alpha] * num_classes)
-                device_class_counts = (device_class_counts * device_variation).astype(int)
-                
-                # Collect train indices
-                train_indices = []
-                for class_id, count in enumerate(device_class_counts):
-                    if count > 0 and class_id in train_class_indices:
-                        available_indices = train_class_indices[class_id]
-                        if len(available_indices) >= count:
-                            selected = np.random.choice(available_indices, count, replace=False)
-                            train_indices.extend(selected)
-                            # Remove selected indices
-                            for idx in selected:
-                                train_class_indices[class_id].remove(idx)
-                
-                # Collect test indices (proportional to train distribution)
-                test_indices = []
-                total_train_samples = len(train_indices)
-                test_samples_per_device = len(self.test_data) // len(devices)
-                
-                if total_train_samples > 0:
-                    test_class_proportions = device_class_counts / max(total_train_samples, 1)
-                    test_class_counts = (test_class_proportions * test_samples_per_device).astype(int)
-                    
-                    for class_id, count in enumerate(test_class_counts):
-                        if count > 0 and class_id in test_class_indices:
-                            available_indices = test_class_indices[class_id]
-                            if len(available_indices) >= count:
-                                selected = np.random.choice(available_indices, count, replace=False)
-                                test_indices.extend(selected)
-                                # Remove selected indices
-                                for idx in selected:
-                                    test_class_indices[class_id].remove(idx)
-                
-                # Create subsets
-                train_subset = Subset(self.train_data, train_indices) if train_indices else None
-                test_subset = Subset(self.test_data, test_indices) if test_indices else None
-                
+                flattened_train_indices_per_device = [x for sublist in device_train_indices[device_id].values() for x in sublist]
+                flattened_test_indices_per_device = [x for sublist in device_test_indices[device_id].values() for x in
+                                                     sublist]
+                train_subset = Subset(self.train_data, flattened_train_indices_per_device) if flattened_train_indices_per_device else None
+                test_subset = Subset(self.test_data, flattened_test_indices_per_device) if flattened_test_indices_per_device else None
                 device_datasets[device_id] = (train_subset, test_subset)
-                
-                print(f"Device {device_id} ({zone_id}): {len(train_indices) if train_indices else 0} train, "
-                      f"{len(test_indices) if test_indices else 0} test samples")
-        
+                len_train_subset = len(train_subset) if train_subset else 0
+                len_test_subset = len(test_subset) if test_subset else 0
+                total_samples += len_train_subset + len_test_subset
+                print(f"Device {device_id} ({zone_id}): {len_train_subset} train, "
+                      f"{len_test_subset} test samples")
+        print(f"Total Samples: {total_samples}")
         self.device_datasets = device_datasets
         return device_datasets
     
@@ -440,7 +568,6 @@ class FederatedDataset:
         
         train_subset, test_subset = self.device_datasets[device_id]
         subset = train_subset if is_train else test_subset
-        
         if subset is None or len(subset) == 0:
             return None
         
@@ -465,7 +592,7 @@ class FederatedDataset:
             drop_last=False
         )
     
-    def analyze_data_distribution(self) -> Dict[str, Any]:
+    def analyze_data_distribution(self, zones: dict[str, Zone]) -> Dict[str, Any]:
         """Analyze the data distribution across devices and zones"""
         if not self.device_datasets:
             return {}
@@ -475,42 +602,35 @@ class FederatedDataset:
             "device_stats": {},
             "zone_stats": defaultdict(lambda: {"devices": 0, "total_samples": 0, "class_distribution": defaultdict(int)})
         }
-        
-        for device_id, (train_subset, test_subset) in self.device_datasets.items():
-            # Extract zone from device ID (assuming format like "device_0_zone_1")
-            zone_id = device_id.split('_')[-1] if '_' in device_id else "unknown"
-            
-            train_size = len(train_subset) if train_subset else 0
-            test_size = len(test_subset) if test_subset else 0
-            
-            analysis["device_stats"][device_id] = {
-                "train_samples": train_size,
-                "test_samples": test_size,
-                "total_samples": train_size + test_size,
-                "zone": zone_id
-            }
-            
-            # Update zone statistics
-            analysis["zone_stats"][zone_id]["devices"] += 1
-            analysis["zone_stats"][zone_id]["total_samples"] += train_size + test_size
-            
-            # Analyze class distribution for train data
-            if train_subset and len(train_subset) > 0:
-                if hasattr(train_subset.dataset, 'targets'):
-                    targets = train_subset.dataset.targets
-                elif hasattr(train_subset.dataset, 'labels'):
-                    targets = train_subset.dataset.labels
-                else:
-                    continue
-                
-                indices = train_subset.indices
-                device_labels = [targets[i] for i in indices]
-                
-                for label in device_labels:
-                    if isinstance(label, torch.Tensor):
-                        label = label.item()
-                    analysis["zone_stats"][zone_id]["class_distribution"][int(label)] += 1
-        
+
+        for zone_id, zone in zones.items():
+            for device_id in zone.devices.keys():
+                (train_subset, test_subset) = self.device_datasets[device_id]
+
+                train_size = len(train_subset) if train_subset else 0
+                test_size = len(test_subset) if test_subset else 0
+
+                analysis["device_stats"][device_id] = {
+                    "train_samples": train_size,
+                    "test_samples": test_size,
+                    "total_samples": train_size + test_size,
+                    "zone": zone_id
+                }
+
+                # Update zone statistics
+                analysis["zone_stats"][zone_id]["devices"] += 1
+                analysis["zone_stats"][zone_id]["total_samples"] += train_size + test_size
+
+                # Analyze class distribution for train data
+                if train_subset and len(train_subset) > 0:
+                    if isinstance(train_subset.dataset.targets, datasets.arrow_dataset.Column):
+                        device_labels = torch.tensor(train_subset.dataset.targets[train_subset.indices])
+                    else:
+                        device_labels = torch.tensor([train_subset.dataset.targets[i] for i in train_subset.indices])
+                    counts = torch.bincount(device_labels, minlength=self.num_classes)
+                    for label, count in enumerate(counts.tolist()):
+                        if count > 0:
+                            analysis["zone_stats"][zone_id]["class_distribution"][label] += count
         return analysis
     
     def save_data_distribution(self, filepath: str):
