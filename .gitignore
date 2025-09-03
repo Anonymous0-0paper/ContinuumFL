@@ -14,8 +14,8 @@
 
 **/__pycache__/
 **/results/
-
-**/data/
+**/logs/
+data/
 
 *.bak
 # Environment files (containing secrets, API keys, credentials)

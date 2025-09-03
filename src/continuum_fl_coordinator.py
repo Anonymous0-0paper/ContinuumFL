@@ -9,7 +9,7 @@ import numpy as np
 import time
 import os
 import json
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Dict, List, Optional, Any
 from collections import defaultdict, deque
 import logging
 
