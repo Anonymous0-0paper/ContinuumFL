@@ -2,6 +2,7 @@
 ContinuumFL Coordinator - Main orchestrator for the spatial-aware federated learning framework.
 Implements the complete ContinuumFL protocol from the paper.
 """
+from concurrent.futures import ProcessPoolExecutor
 
 import torch
 import torch.nn as nn
@@ -21,6 +22,25 @@ from .data.federated_dataset import FederatedDataset
 from .models.model_factory import ModelFactory
 from .communication.compression import GradientCompressor
 from .baselines.baseline_fl import BaselineFLMethods
+
+# ThreadFunc
+def run_training(args: dict[str, Any]):
+    device = args["device"]
+    global_model = args["model"]
+    epochs = args["epochs"]
+    learning_rate = args["learning_rate"]
+    comp_device = args["comp_device"]
+
+    # Simulate device failure
+    device.simulate_failure()
+    if not device.is_active:
+        return None
+    return device.local_train(
+        global_model,
+        epochs=epochs,
+        learning_rate=learning_rate,
+        device=comp_device), device.device_id
+
 
 class ContinuumFLCoordinator:
     """
@@ -342,38 +362,35 @@ class ContinuumFLCoordinator:
         ).tolist()
         
         return participating
-    
+
     def _perform_local_training(self, participating_devices: List[str]) -> Dict[str, Dict[str, torch.Tensor]]:
         """Perform local training on participating devices"""
         device_updates = {}
-        
-        for device_id in participating_devices:
-            device = self.devices[device_id]
-            
-            # Simulate device failure
-            device.simulate_failure()
-            if not device.is_active:
-                continue
-            
-            # Perform local training
-            training_result = device.local_train(
-                self.global_model,
-                epochs=self.config.local_epochs,
-                learning_rate=self.config.learning_rate,
-                device=self.config.device
-            )
-            
-            if training_result["success"]:
-                device_updates[device_id] = training_result["gradient"]
-                
-                # Update device participation tracking
-                self.device_participation[device_id] += 1
-            
-            # Update device reliability based on participation
-            if device_id in device_updates:
-                device.participation_history.append(1)
-            else:
-                device.participation_history.append(0)
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        if self.config.device == 'cuda':
+            max_workers = len(participating_devices)
+        else:
+            max_workers = min(len(participating_devices), os.cpu_count())
+
+        device_args = [{"device": self.devices[device_id], "model": self.global_model, "epochs": self.config.local_epochs, "learning_rate": self.config.learning_rate,
+                        "comp_device": self.config.device} for device_id in participating_devices]
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(run_training, args) for args in device_args]
+
+            for f in as_completed(futures):
+                res = f.result()
+                if res is None:
+                    continue
+
+                res_dict, device_id = res
+                if res_dict["success"]:
+
+                    device_updates[device_id] = res_dict["gradient"]
+                    self.device_participation[device_id] += 1
+
+                    # Update device reliability based on participation
+                    self.devices[device_id].participation_history.append(1)
         
         self.logger.info(f"Local training completed: {len(device_updates)}/{len(participating_devices)} devices")
         return device_updates
