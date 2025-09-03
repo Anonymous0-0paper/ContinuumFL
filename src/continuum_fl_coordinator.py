@@ -2,6 +2,7 @@
 ContinuumFL Coordinator - Main orchestrator for the spatial-aware federated learning framework.
 Implements the complete ContinuumFL protocol from the paper.
 """
+from asyncio import FIRST_COMPLETED
 from concurrent.futures import ProcessPoolExecutor
 
 import torch
@@ -13,6 +14,7 @@ import json
 from typing import Dict, List, Optional, Any
 from collections import defaultdict, deque
 import logging
+from concurrent.futures import ThreadPoolExecutor, wait
 
 from .core.device import EdgeDevice, DeviceResources
 from .core.zone import Zone
@@ -22,25 +24,6 @@ from .data.federated_dataset import FederatedDataset
 from .models.model_factory import ModelFactory
 from .communication.compression import GradientCompressor
 from .baselines.baseline_fl import BaselineFLMethods
-
-# ThreadFunc
-def run_training(args: dict[str, Any]):
-    device = args["device"]
-    global_model = args["model"]
-    epochs = args["epochs"]
-    learning_rate = args["learning_rate"]
-    comp_device = args["comp_device"]
-
-    # Simulate device failure
-    device.simulate_failure()
-    if not device.is_active:
-        return None
-    return device.local_train(
-        global_model,
-        epochs=epochs,
-        learning_rate=learning_rate,
-        device=comp_device), device.device_id
-
 
 class ContinuumFLCoordinator:
     """
@@ -369,29 +352,32 @@ class ContinuumFLCoordinator:
 
         from concurrent.futures import ThreadPoolExecutor, as_completed
         if self.config.device == 'cuda':
-            max_workers = len(participating_devices)
+            max_workers = len(self.zones)
         else:
-            max_workers = min(len(participating_devices), os.cpu_count())
+            max_workers = min(len(self.zones), os.cpu_count())
+        args = {
+            "comp_device": self.config.device,
+            "model": self.global_model,
+            "learning_rate": self.config.learning_rate,
+            "epochs": self.config.epochs,
+            "device_participation": self.device_participation
+        }
+        def _add_participating_devices(zone):
+            import copy
+            args_copy = copy.deepcopy(args)
+            devices = set(participating_devices).intersection(zone.devices.keys())
+            args_copy["participating_devices"] = devices
+            return args_copy
 
-        device_args = [{"device": self.devices[device_id], "model": self.global_model, "epochs": self.config.local_epochs, "learning_rate": self.config.learning_rate,
-                        "comp_device": self.config.device} for device_id in participating_devices]
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [executor.submit(run_training, args) for args in device_args]
+            futures = [executor.submit(zone.perform_local_training, _add_participating_devices().copy()) for zone_id, zone in self.zones.items()]
+            while futures:
+                done, _ = wait(futures, return_when=FIRST_COMPLETED)
+                for f in done:
+                    zone_id, aggregated_weights = f.result()
+                    # Perform Inter Zone Aggregation TODO
+                    futures.append(executor.submit(self.zones[zone_id].perform_local_training, args))
 
-            for f in as_completed(futures):
-                res = f.result()
-                if res is None:
-                    continue
-
-                res_dict, device_id = res
-                if res_dict["success"]:
-
-                    device_updates[device_id] = res_dict["gradient"]
-                    self.device_participation[device_id] += 1
-
-                    # Update device reliability based on participation
-                    self.devices[device_id].participation_history.append(1)
-        
         self.logger.info(f"Local training completed: {len(device_updates)}/{len(participating_devices)} devices")
         return device_updates
     

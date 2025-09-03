@@ -2,6 +2,7 @@
 Zone module for ContinuumFL framework.
 Implements spatial zones that aggregate edge devices with similar characteristics.
 """
+import os
 
 import numpy as np
 import torch
@@ -10,6 +11,24 @@ from typing import Dict, List, Tuple, Optional, Any, Set
 from collections import defaultdict, deque
 import time
 from .device import EdgeDevice
+
+# ThreadFunc
+def run_training(args: dict[str, Any]):
+    device = args["device"]
+    global_model = args["model"]
+    epochs = args["epochs"]
+    learning_rate = args["learning_rate"]
+    comp_device = args["comp_device"]
+
+    # Simulate device failure
+    device.simulate_failure()
+    if not device.is_active:
+        return None
+    return device.local_train(
+        global_model,
+        epochs=epochs,
+        learning_rate=learning_rate,
+        device=comp_device), device.device_id
 
 class Zone:
     """
@@ -98,7 +117,49 @@ class Zone:
         # Update resource capacity
         self.compute_capacity = sum(device.resources.compute_capacity for device in self.devices.values())
         self.memory_capacity = sum(device.resources.memory_capacity for device in self.devices.values())
-    
+
+    def perform_local_training(self, args) -> dict[Any, Any] | None:
+        """Perform local training on participating devices"""
+
+        participating_devices = args["participating_devices"]
+        if not participating_devices:
+            return None
+        comp_device = args["comp_device"]
+        global_model = args["model"]
+        learning_rate = args["learning_rate"]
+        epochs = args["epochs"]
+        device_participation = args["device_participation"]
+        device_updates = {}
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        if comp_device == 'cuda':
+            max_workers = len(participating_devices)
+        else:
+            max_workers = min(len(participating_devices), os.cpu_count())
+
+        device_args = [
+            {"device": participating_devices[device_id], "model": global_model, "epochs": epochs,
+             "learning_rate": learning_rate,
+             "comp_device": comp_device} for device_id in participating_devices]
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(run_training, args) for args in device_args]
+
+            for f in as_completed(futures):
+                res = f.result()
+                if res is None:
+                    continue
+
+                res_dict, device_id = res
+                if res_dict["success"]:
+                    device_updates[device_id] = res_dict["gradient"]
+                    device_participation[device_id] += 1
+
+                    # Update device reliability based on participation
+                    self.devices[device_id].participation_history.append(1)
+
+        aggregated_weights = self.intra_zone_aggregation(device_updates)
+        return self.zone_id, aggregated_weights
+
     def compute_intra_zone_weights(self) -> Dict[str, float]:
         """
         Compute aggregation weights for devices within the zone.
