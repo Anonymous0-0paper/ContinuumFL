@@ -11,6 +11,8 @@ from collections import defaultdict, deque
 import time
 import copy
 
+from torch import Tensor
+
 from ..core.zone import Zone
 from ..core.device import EdgeDevice
 
@@ -339,53 +341,29 @@ class HierarchicalAggregator:
         return global_aggregated
     
     def federated_aggregation_round(self, zones: Dict[str, Zone], 
-                                  device_updates: Dict[str, Dict[str, torch.Tensor]]) -> Tuple[Dict[str, torch.Tensor], Dict[str, Any]]:
+                                  num_device_updates: int, participating_zones: List[str], total_time, intra_time, inter_time, comm_cost) -> Dict[str, Any]:
         """
         Perform complete federated aggregation round.
         
         Implements Algorithm 2: ContinuumFL Aggregation Protocol.
         """
-        start_time = time.time()
-        round_stats = {
-            "round": self.current_round,
-            "participating_zones": 0,
-            "participating_devices": len(device_updates),
-            "aggregation_time": 0.0,
-            "communication_cost": 0.0
-        }
-        
-        # Phase 1: Local Training (already completed by devices)
-        
-        # Phase 2: Intra-Zone Aggregation
-        intra_start = time.time()
-        zone_weights = self.intra_zone_aggregation(zones, device_updates)
-        intra_time = time.time() - intra_start
-        
-        participating_zones = len(zone_weights)
-        round_stats["participating_zones"] = participating_zones
-        
-        if participating_zones == 0:
-            return self.global_weights or {}, round_stats
+        round_stats = {"round": self.current_round, "participating_zones": 0,
+                       "participating_devices": num_device_updates, "aggregation_time": 0.0, "communication_cost": 0.0}
+        if len(participating_zones) == 0:
+            return round_stats
         
         # Update zone staleness
         for zone_id in zones:
-            if zone_id in zone_weights:
+            if zone_id in participating_zones:
                 self.zone_staleness[zone_id] = 0  # Reset staleness
             else:
                 self.zone_staleness[zone_id] += 1  # Increment staleness
-        
-        # Phase 3: Inter-Zone Aggregation
-        inter_start = time.time()
-        global_weights = self.inter_zone_aggregation(zone_weights, zones)
-        inter_time = time.time() - inter_start
-        
-        total_time = time.time() - start_time
+
         round_stats["aggregation_time"] = total_time
         round_stats["intra_zone_time"] = intra_time
         round_stats["inter_zone_time"] = inter_time
         
         # Estimate communication cost
-        comm_cost = self.estimate_communication_cost(device_updates, zone_weights)
         round_stats["communication_cost"] = comm_cost
         self.communication_costs.append(comm_cost)
         
@@ -400,27 +378,7 @@ class HierarchicalAggregator:
         
         self.current_round += 1
         
-        return global_weights, round_stats
-    
-    def estimate_communication_cost(self, device_updates: Dict[str, Dict[str, torch.Tensor]], 
-                                  zone_weights: Dict[str, Dict[str, torch.Tensor]]) -> float:
-        """Estimate communication cost in MB for this round"""
-        total_cost = 0.0
-        
-        # Device to zone communication (uplink)
-        for device_id, weights in device_updates.items():
-            device_size = sum(param.numel() * 4 for param in weights.values()) / (1024 * 1024)  # 4 bytes per float32
-            compressed_size = device_size * self.compression_rate  # Apply compression
-            total_cost += compressed_size
-        
-        # Zone to cloud communication (inter-zone)
-        for zone_id, weights in zone_weights.items():
-            zone_size = sum(param.numel() * 4 for param in weights.values()) / (1024 * 1024)
-            # Apply delta encoding (assume 50% reduction)
-            delta_encoded_size = zone_size * 0.5
-            total_cost += delta_encoded_size * 2  # Bidirectional
-        
-        return total_cost
+        return round_stats
     
     def get_aggregation_stats(self) -> Dict[str, Any]:
         """Get comprehensive aggregation statistics"""

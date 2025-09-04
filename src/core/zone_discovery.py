@@ -357,7 +357,7 @@ class ZoneDiscovery:
                 return existing_zones
             else:
                 # Create single zone
-                zone = Zone(zone_id="zone_0", edge_server_id="server_0")
+                zone = Zone(zone_id="zone_0", edge_server_id="server_0", compression_rate=self.config.compression_rate)
                 for device in active_devices:
                     zone.add_device(device)
                 return {"zone_0": zone}
@@ -377,7 +377,7 @@ class ZoneDiscovery:
             zone_id = f"zone_{i}"
             edge_server_id = f"server_{i}"
             
-            zone = Zone(zone_id=zone_id, edge_server_id=edge_server_id)
+            zone = Zone(zone_id=zone_id, edge_server_id=edge_server_id, compression_rate=self.config.compression_rate)
             
             for device_idx in cluster:
                 device = active_devices[device_idx]

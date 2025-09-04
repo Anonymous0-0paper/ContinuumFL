@@ -10,6 +10,9 @@ import torch.nn as nn
 from typing import Dict, List, Tuple, Optional, Any, Set
 from collections import defaultdict, deque
 import time
+
+from torch import Tensor
+
 from .device import EdgeDevice
 
 # ThreadFunc
@@ -41,7 +44,7 @@ class Zone:
     - Zone-level objective F_k(w)
     """
     
-    def __init__(self, zone_id: str, edge_server_id: str):
+    def __init__(self, zone_id: str, edge_server_id: str, compression_rate: float):
         self.zone_id = zone_id
         self.edge_server_id = edge_server_id
         
@@ -83,6 +86,8 @@ class Zone:
         # Failure handling
         self.is_operational = True
         self.backup_aggregators: List[str] = []
+
+        self.compression_rate = compression_rate
         
     def add_device(self, device: EdgeDevice):
         """Add a device to this zone"""
@@ -118,12 +123,28 @@ class Zone:
         self.compute_capacity = sum(device.resources.compute_capacity for device in self.devices.values())
         self.memory_capacity = sum(device.resources.memory_capacity for device in self.devices.values())
 
-    def perform_local_training(self, args) -> dict[Any, Any] | None:
+    def _sample_participating_devices(self) -> List[str]:
+        """Sample devices for participation in current round"""
+        # Simple participation strategy: random sampling with availability check
+        available_devices = [
+            device_id for device_id, device in self.devices.items()
+            if device.is_active and device.local_dataset
+        ]
+
+        # Sample fraction of available devices
+        participation_rate = 0.7  # 70% participation rate
+        num_participants = max(1, int(participation_rate * len(available_devices)))
+
+        participating = np.random.choice(
+            available_devices, size=num_participants, replace=False
+        ).tolist()
+
+        return participating
+
+    def perform_local_training(self, args) -> tuple[str, dict[str, Tensor], dict[str, list[str] | int]]:
         """Perform local training on participating devices"""
 
-        participating_devices = args["participating_devices"]
-        if not participating_devices:
-            return None
+        participating_devices = self._sample_participating_devices()
         comp_device = args["comp_device"]
         global_model = args["model"]
         learning_rate = args["learning_rate"]
@@ -138,7 +159,7 @@ class Zone:
             max_workers = min(len(participating_devices), os.cpu_count())
 
         device_args = [
-            {"device": participating_devices[device_id], "model": global_model, "epochs": epochs,
+            {"device": self.devices[device_id], "model": global_model, "epochs": epochs,
              "learning_rate": learning_rate,
              "comp_device": comp_device} for device_id in participating_devices]
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -156,9 +177,35 @@ class Zone:
 
                     # Update device reliability based on participation
                     self.devices[device_id].participation_history.append(1)
-
+        intra_start = time.time()
         aggregated_weights = self.intra_zone_aggregation(device_updates)
-        return self.zone_id, aggregated_weights
+        intra_time = time.time() - intra_start
+
+        comm_cost = self.estimate_communication_cost(device_updates, {self.zone_id: aggregated_weights})
+        return self.zone_id, aggregated_weights, {"participating_devices": participating_devices,
+                                                  "num_device_updates": len(device_updates),
+                                                  "intra_time": intra_time,
+                                                  "communication_cost": comm_cost}
+
+    def estimate_communication_cost(self, device_updates: Dict[str, Dict[str, torch.Tensor]],
+                                    zone_weights: Dict[str, Dict[str, torch.Tensor]]) -> float:
+        """Estimate communication cost in MB for this round"""
+        total_cost = 0.0
+
+        # Device to zone communication (uplink)
+        for device_id, weights in device_updates.items():
+            device_size = sum(param.numel() * 4 for param in weights.values()) / (1024 * 1024)  # 4 bytes per float32
+            compressed_size = device_size * self.compression_rate  # Apply compression
+            total_cost += compressed_size
+
+        # Zone to cloud communication (inter-zone)
+        for zone_id, weights in zone_weights.items():
+            zone_size = sum(param.numel() * 4 for param in weights.values()) / (1024 * 1024)
+            # Apply delta encoding (assume 50% reduction)
+            delta_encoded_size = zone_size * 0.5
+            total_cost += delta_encoded_size * 2  # Bidirectional
+
+        return total_cost
 
     def compute_intra_zone_weights(self) -> Dict[str, float]:
         """

@@ -96,7 +96,7 @@ class EdgeDevice:
         
         # Initialize local model with global weights
         self.local_model.load_state_dict(global_model.state_dict())
-        
+
         # Move model to appropriate device
         if device == 'cuda' and torch.cuda.is_available():
             self.local_model = self.local_model.cuda()
@@ -140,9 +140,6 @@ class EdgeDevice:
 
                 total_loss += loss.item()
                 num_batches += 1
-
-                if batch_idx % 20 == 0:
-                    print(f'({self.device_id}) Loss: {loss:.3f}, Accuracy {(correct / len(target)) * 100:.2f}%')
         
         training_time = time.time() - start_time
         self.training_times.append(training_time)
