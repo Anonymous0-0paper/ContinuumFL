@@ -3,7 +3,7 @@ ContinuumFL Coordinator - Main orchestrator for the spatial-aware federated lear
 Implements the complete ContinuumFL protocol from the paper.
 """
 from asyncio import FIRST_COMPLETED
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, Future
+from concurrent.futures import Future
 
 import torch
 import torch.nn as nn
@@ -26,6 +26,7 @@ from .data.federated_dataset import FederatedDataset
 from .models.model_factory import ModelFactory
 from .communication.compression import GradientCompressor
 from .baselines.baseline_fl import BaselineFLMethods
+from .memory_log.memory_log import log_mem
 
 class ContinuumFLCoordinator:
     """
@@ -279,14 +280,15 @@ class ContinuumFLCoordinator:
                     round_start_time = time.time()
 
                     self.logger.info(f"\n=== Round {round_num + 1}/{self.config.num_rounds} ===")
+                    log_mem(f"Round {round_num + 1}")
 
                     # 1. Zone discovery/update (periodic)
-                    if round_num % 10 == 0 and round_num > 0:  # Every 10 rounds
+                    if round_num % 1 == 0 and round_num > 0:  # Every 10 rounds
                         self.logger.info("Updating zone assignments...")
                         device_list = [d for d in self.devices.values() if d.is_active]
                         self.zones = self.zone_discovery.adaptive_zone_update(device_list, self.zones)
                     done, _ = wait(futures, return_when=FIRST_COMPLETED)
-                    print(f"Got {len(done)} Results")
+                    self.logger.info(f"Aggregating gradients of {len(done)} Zone(s)...")
 
                     # 3. Hierarchical aggregation
                     zone_weights = {}
@@ -311,9 +313,8 @@ class ContinuumFLCoordinator:
                     intra_time /= len(done)
                     inter_start = time.time()
                     inter_zone_aggregated_weights = self.aggregator.inter_zone_aggregation(
-                        zone_weights=zone_weights, zones=self.zones)
+                        global_weights=self.global_model.clone().state_dict(), zone_weights=zone_weights, zones=self.zones)
                     inter_time = time.time() - inter_start
-
                     total_time = time.time() - start_time
 
                     aggregation_stats = self.aggregator.federated_aggregation_round(zones=self.zones,
@@ -328,12 +329,11 @@ class ContinuumFLCoordinator:
                         model_state = self.global_model.state_dict()
                         for k in model_state.keys():
                             if model_state[k].dtype.is_floating_point:
-                                model_state[k] += inter_zone_aggregated_weights[k]
+                                model_state[k] = model_state[k].cpu() + inter_zone_aggregated_weights[k]
                         self.global_model.load_state_dict(model_state)
                     else:
                         self.logger.warning("No device updates received in this round")
                         aggregation_stats = {"participating_devices": 0, "participating_zones": 0}
-
                     # 4. Evaluation
                     round_metrics = self._evaluate_round(participating_devices, aggregation_stats)
 
@@ -343,7 +343,6 @@ class ContinuumFLCoordinator:
                     self.training_history.append(round_metrics)
 
                     # Log round results
-                    print("PRINT ROUND METRICS")
                     self._log_round_results(round_num, round_metrics, round_time)
 
                     # Save checkpoint periodically
@@ -352,7 +351,6 @@ class ContinuumFLCoordinator:
 
                     self.current_round += 1
                     round_num = self.current_round
-
                     # Restart training for aggregated zones
                     for zone_id in zone_weights.keys():
                         futures.append(executor.submit(self.zones[zone_id].perform_local_training, args))
@@ -378,7 +376,7 @@ class ContinuumFLCoordinator:
         ThreadPoolExecutor, list[Future[tuple[str, dict[str, Tensor], dict[str, list[str] | int]]]]]:
         """Start local training in all Zones"""
 
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import ThreadPoolExecutor
 
         if self.config.device == 'cuda':
             max_workers = len(self.zones)
@@ -454,14 +452,11 @@ class ContinuumFLCoordinator:
                     output = output[0]
                 
                 loss = criterion(output, target)
-                total_loss += loss.item()
+                total_loss += loss.detach().item()
                 
                 pred = output.argmax(dim=1, keepdim=True)
                 correct += pred.eq(target.view_as(pred)).sum().item()
                 total += target.size(0)
-
-                if batch_idx % 20 == 0:
-                    print(f"Loss: {loss}")
         accuracy = correct / max(total, 1)
         avg_loss = total_loss / max(len(test_dataloader), 1)
         

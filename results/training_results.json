@@ -1,38 +1,29 @@
 {
-  "total_rounds": 6,
-  "total_training_time": 123.86887073516846,
-  "final_accuracy": 0.021,
-  "final_loss": 4.679085060954094,
-  "average_round_time": 24.77291293144226,
-  "total_communication_cost": 1293.7107482910155,
+  "total_rounds": 1,
+  "total_training_time": 11.925614356994629,
+  "final_accuracy": 0.015,
+  "final_loss": 4.6070704609155655,
+  "average_round_time": 0.0,
+  "total_communication_cost": 0,
   "device_participation_stats": {
-    "device_10": 4,
-    "device_17": 3,
-    "device_21": 2,
-    "device_6": 2,
-    "device_28": 3,
-    "device_15": 4,
-    "device_13": 2,
-    "device_14": 2,
-    "device_11": 2,
-    "device_19": 3,
-    "device_25": 3,
-    "device_23": 3,
-    "device_7": 3,
-    "device_9": 1,
-    "device_5": 1,
-    "device_1": 1,
-    "device_0": 3,
-    "device_26": 2,
-    "device_8": 3,
-    "device_16": 1,
+    "device_3": 1,
+    "device_23": 1,
     "device_18": 1,
-    "device_4": 2,
-    "device_27": 2,
+    "device_4": 1,
+    "device_25": 1,
     "device_24": 1,
-    "device_20": 2,
-    "device_12": 1,
-    "device_22": 1
+    "device_28": 1,
+    "device_8": 1,
+    "device_16": 1,
+    "device_17": 1,
+    "device_6": 1,
+    "device_29": 1,
+    "device_0": 1,
+    "device_19": 1,
+    "device_2": 1,
+    "device_9": 1,
+    "device_11": 1,
+    "device_7": 1
   },
   "convergence_rounds": -1,
   "zone_discovery_stats": {
@@ -41,34 +32,5 @@
     "total_migrations": 0,
     "migration_history_size": 0
   },
-  "aggregation_stats": {
-    "total_rounds": 5,
-    "zone_participation_rates": {
-      "zone_0": 1.0,
-      "zone_1": 1.0,
-      "zone_2": 1.0,
-      "zone_3": 1.0,
-      "zone_4": 1.0
-    },
-    "average_communication_cost_mb": 258.7421496582031,
-    "spatial_correlations": {
-      "average": 0.1640515750411581,
-      "maximum": 0.4095099999999999,
-      "total_pairs": 15
-    },
-    "staleness_distribution": {
-      "zone_0": 1,
-      "zone_1": 1,
-      "zone_2": 1,
-      "zone_3": 0,
-      "zone_4": 1
-    },
-    "current_zone_weights": {
-      "zone_0": 0.19999999999999998,
-      "zone_1": 0.19999999999999998,
-      "zone_2": 0.19999999999999998,
-      "zone_3": 0.19999999999999998,
-      "zone_4": 0.19999999999999998
-    }
-  }
+  "aggregation_stats": {}
 }

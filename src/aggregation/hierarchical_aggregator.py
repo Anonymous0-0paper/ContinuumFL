@@ -152,7 +152,7 @@ class HierarchicalAggregator:
             else:
                 staleness_factor = np.exp(-self.staleness_penalty * staleness)
                 adjusted_weights[zone_id] = fair_weight * staleness_factor
-        
+        print(f"Adjusted Weights: {adjusted_weights}")
         # Renormalize weights
         total_weight = sum(adjusted_weights.values())
         if total_weight > 0:
@@ -180,7 +180,7 @@ class HierarchicalAggregator:
                 for param_name, global_param in self.global_weights.items():
                     if param_name in zone.aggregated_weights:
                         zone_param = zone.aggregated_weights[param_name]
-                        deviation[param_name] = zone_param - global_param
+                        deviation[param_name] = zone_param - global_param.cpu()
                     else:
                         deviation[param_name] = torch.zeros_like(global_param)
                 
@@ -276,7 +276,7 @@ class HierarchicalAggregator:
         
         return zone_aggregated_weights
     
-    def inter_zone_aggregation(self, zone_weights: Dict[str, Dict[str, torch.Tensor]], 
+    def inter_zone_aggregation(self, global_weights, zone_weights: Dict[str, Dict[str, torch.Tensor]],
                              zones: Dict[str, Zone]) -> Dict[str, torch.Tensor]:
         """
         Perform inter-zone aggregation with spatial awareness.
@@ -290,12 +290,18 @@ class HierarchicalAggregator:
         base_weights = self.compute_zone_base_weights(zones)
         fair_weights = self.apply_fairness_adjustment(base_weights)
         final_weights = self.apply_staleness_penalty(fair_weights)
-        print(f"Fair Weights: {final_weights}")
         # Update spatial correlations
         self.update_spatial_correlations(zones)
         
         # Initialize global aggregated weights
-        first_zone_weights = next(iter(zone_weights.values()))
+        first_zone_weights = None
+        for zone_id in sorted(zone_weights.keys()):
+            if zone_weights[zone_id]:
+                first_zone_weights = zone_weights[zone_id]
+                break
+        if first_zone_weights is None:
+            return self.global_weights or {}
+
         global_aggregated = {}
         original_dtypes = {}  # Track original data types
         
@@ -335,9 +341,11 @@ class HierarchicalAggregator:
         # Apply spatial regularization (conceptually - in practice, this influences convergence)
         # The regularization term is computed for monitoring but not directly added to weights
         reg_term = self.compute_spatial_regularization_term(zone_weights, zones)
-        
-        self.global_weights = global_aggregated
-        
+
+        for k in self.global_weights.keys():
+            if self.global_weights[k].dtype.is_floating_point:
+                self.global_weights[k] = self.global_weights[k].cpu() + global_aggregated[k].cpu()
+
         return global_aggregated
     
     def federated_aggregation_round(self, zones: Dict[str, Zone], 

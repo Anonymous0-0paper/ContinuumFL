@@ -23,15 +23,20 @@ def run_training(args: dict[str, Any]):
     learning_rate = args["learning_rate"]
     comp_device = args["comp_device"]
 
-    # Simulate device failure
-    device.simulate_failure()
-    if not device.is_active:
+    # active device fails
+    if device.is_active and device.simulate_failure():
         return None
-    return device.local_train(
-        global_model,
-        epochs=epochs,
-        learning_rate=learning_rate,
-        device=comp_device), device.device_id
+
+    # device active or failed device is repaired
+    if device.is_active or device.simulate_repair():
+        return device.local_train(
+            global_model,
+            epochs=epochs,
+            learning_rate=learning_rate,
+            device=comp_device), device.device_id
+
+    # device failed and was not repaired
+    return None
 
 class Zone:
     """
@@ -131,15 +136,18 @@ class Zone:
             if device.is_active and device.local_dataset
         ]
 
-        # Sample fraction of available devices
-        participation_rate = 0.7  # 70% participation rate
-        num_participants = max(1, int(participation_rate * len(available_devices)))
+        if available_devices:
+            # Sample fraction of available devices
+            participation_rate = 0.7  # 70% participation rate
+            num_participants = max(1, int(participation_rate * len(available_devices)))
 
-        participating = np.random.choice(
-            available_devices, size=num_participants, replace=False
-        ).tolist()
+            participating = np.random.choice(
+                available_devices, size=num_participants, replace=False
+            ).tolist()
 
-        return participating
+            return participating
+
+        return []
 
     def perform_local_training(self, args) -> tuple[str, dict[str, Tensor], dict[str, list[str] | int]]:
         """Perform local training on participating devices"""
@@ -162,7 +170,7 @@ class Zone:
             {"device": self.devices[device_id], "model": global_model, "epochs": epochs,
              "learning_rate": learning_rate,
              "comp_device": comp_device} for device_id in participating_devices]
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        with ThreadPoolExecutor(max_workers=max(1, max_workers)) as executor:
             futures = [executor.submit(run_training, args) for args in device_args]
 
             for f in as_completed(futures):
@@ -293,7 +301,7 @@ class Zone:
             if original_dtypes[param_name] != torch.float32:
                 aggregated_weights[param_name] = aggregated_weights[param_name].to(original_dtypes[param_name])
         
-        # Apply gradient compression (temporarily disabled) TODO Fix Compression and replace Weights by Delta-Weights
+        # Apply gradient compression (temporarily disabled)
         # compressed_weights = self._apply_gradient_compression(aggregated_weights)
         
         self.aggregated_weights = aggregated_weights # TODO use compressed weights
@@ -338,7 +346,6 @@ class Zone:
         num_devices = len([d for d in self.devices.values() if d.is_active])
         avg_dataset_size = self.total_dataset_size / max(num_devices, 1)
         data_contribution = num_devices * avg_dataset_size
-        print(f"({self.zone_id}) Num Devices {num_devices}, avg dataset size {avg_dataset_size:.2f}")
         # Gradient consistency component
         gradient_variances = []
         for device in self.devices.values():
@@ -350,9 +357,9 @@ class Zone:
         
         if gradient_variances:
             gradient_variance = np.var(gradient_variances)
-            consistency_score = np.exp(-gradient_variance)
+            consistency_score = np.exp(-0.0001 * np.float32(gradient_variance))
         else:
-            consistency_score = 1.0
+            consistency_score = 0.0
         
         # Validation accuracy component (placeholder)
         # In practice, this would be computed on a validation set

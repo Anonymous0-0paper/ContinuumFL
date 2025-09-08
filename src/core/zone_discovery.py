@@ -420,16 +420,33 @@ class ZoneDiscovery:
                 continue
             
             current_zone_id = device.zone_id
-            
+
+            staying_cost = self.compute_reassignment_cost(
+                device, current_zone_id, current_zone_id, zones
+            )
+            min_reassignment_cost = np.inf
+            best_candidate = None
+
             # Evaluate alternative zones
             for candidate_zone_id, candidate_zone in zones.items():
                 if candidate_zone_id != current_zone_id:
-                    if self.should_reassign_device(device, current_zone_id, 
-                                                 candidate_zone_id, zones):
-                        reassignments.append((device.device_id, current_zone_id, candidate_zone_id))
+                    reassignment_cost = self.compute_reassignment_cost(
+                        device, current_zone_id, candidate_zone_id, zones
+                    )
+                    if reassignment_cost < min_reassignment_cost:
+                        min_reassignment_cost = reassignment_cost
+                        best_candidate = candidate_zone_id
+
+            should_reassign = min_reassignment_cost < staying_cost - self.stability_threshold
+            if should_reassign:
+                reassignments.append((device.device_id, current_zone_id, best_candidate))
         
         # Apply reassignments
+        print(f"Reassignments: {reassignments}")
         for device_id, from_zone_id, to_zone_id in reassignments:
+            print(f"{device_id} is in {from_zone_id} but should be in {to_zone_id}.\n"
+                  f"{from_zone_id}: {zones[from_zone_id].devices}\n"
+                  f"{to_zone_id}: {zones[to_zone_id].devices}")
             if from_zone_id in zones and to_zone_id in zones:
                 device = zones[from_zone_id].devices[device_id]
                 zones[from_zone_id].remove_device(device_id)

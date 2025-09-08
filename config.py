@@ -37,7 +37,7 @@ class ContinuumFLConfig:
         # Aggregation Parameters
         self.spatial_regularization = 0.1  # λ - spatial regularization
         self.momentum_eta = 0.9             # η - momentum for correlation update
-        self.staleness_penalty = 0.1       # μ - staleness penalty
+        self.staleness_penalty = 0.01       # μ - staleness penalty
         self.max_staleness = 5             # τ_max - maximum staleness
         self.fairness_strength = 0.5       # α_fair - fairness enforcement
         
@@ -61,8 +61,8 @@ class ContinuumFLConfig:
         self.dataset_name = 'cifar100'   # Options: 'cifar100', 'femnist', 'shakespeare'
         self.max_samples = 100            # Limit Dataset-Size (use -1 for full dataset)
         self.data_distribution = 'dirichlet'  # Data distribution type
-        self.intra_zone_alpha = 1000      # Dirichlet α for intra-zone
-        self.inter_zone_alpha = 1000      # Dirichlet α for inter-zone
+        self.intra_zone_alpha = 10       # Dirichlet α for intra-zone
+        self.inter_zone_alpha = 0.3      # Dirichlet α for inter-zone
         self.train_test_split = 0.8
         
         # Model Configuration

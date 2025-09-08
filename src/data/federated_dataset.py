@@ -355,24 +355,6 @@ class FederatedDataset:
         
         return TextDataset(data_dict['sequences'], data_dict['targets'])
     
-    def create_zone_distributions(self, num_zones: int, num_classes: int) -> Dict[str, np.ndarray]:
-        """
-        Create class distribution for each zone using Dirichlet distribution.
-        
-        Implements the spatial data heterogeneity model from the paper.
-        """
-        # Create zone-level class distributions
-        zone_distributions = {}
-        
-        # Generate Dirichlet distributions for zones
-        for zone_id in range(num_zones):
-            # Use inter-zone alpha for zone-level diversity
-            zone_dist = np.random.dirichlet([self.inter_zone_alpha] * num_classes)
-            zone_distributions[f"zone_{zone_id}"] = zone_dist
-        
-        self.zone_distributions = zone_distributions
-        return zone_distributions
-    
     def distribute_data_to_devices(self, devices: List[str], zones: Dict[str, List[str]]) -> Dict[str, Tuple[Subset, Subset]]:
         """
         Distribute data to devices with spatial non-IID characteristics.
@@ -399,8 +381,7 @@ class FederatedDataset:
         self.num_classes = num_classes
         # Create zone distributions
         num_zones = len(zones)
-        zone_distributions = self.create_zone_distributions(num_zones, num_classes)
-        
+
         # Get labels for train and test data
         if isinstance(self.train_data.targets, torch.Tensor):
             train_labels = self.train_data.targets.numpy()
