@@ -283,7 +283,7 @@ class ContinuumFLCoordinator:
                     log_mem(f"Round {round_num + 1}")
 
                     # 1. Zone discovery/update (periodic)
-                    if round_num % 1 == 0 and round_num > 0:  # Every 10 rounds
+                    if round_num % 10 == 0 and round_num > 0:  # Every 10 rounds
                         self.logger.info("Updating zone assignments...")
                         device_list = [d for d in self.devices.values() if d.is_active]
                         self.zones = self.zone_discovery.adaptive_zone_update(device_list, self.zones)
