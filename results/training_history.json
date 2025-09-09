@@ -1,1 +1,158 @@
-[]
+[
+  {
+    "round": 0,
+    "global_accuracy": 0.04751239801631739,
+    "global_loss": 4.045364086725274,
+    "participating_devices": 6,
+    "participating_zones": 0,
+    "communication_cost_mb": 21.1413818359375,
+    "zone_metrics": {
+      "zone_0": {
+        "accuracy": 0.0
+      },
+      "zone_1": {
+        "accuracy": 0.0
+      },
+      "zone_2": {
+        "accuracy": 0.0069498069498069494
+      },
+      "zone_3": {
+        "accuracy": 0.19943555973659455
+      },
+      "zone_4": {
+        "accuracy": 0.1111111111111111
+      }
+    },
+    "aggregation_time": 0.11576557159423828
+  },
+  {
+    "round": 1,
+    "global_accuracy": 0.04751239801631739,
+    "global_loss": 4.078791735123615,
+    "participating_devices": 4,
+    "participating_zones": 0,
+    "communication_cost_mb": 70.03082733154297,
+    "zone_metrics": {
+      "zone_0": {
+        "accuracy": 0.0942501481920569
+      },
+      "zone_1": {
+        "accuracy": 0.01445466491458607
+      },
+      "zone_2": {
+        "accuracy": 0.008494208494208495
+      },
+      "zone_3": {
+        "accuracy": 0.01975540921919097
+      },
+      "zone_4": {
+        "accuracy": 0.12280701754385964
+      }
+    },
+    "aggregation_time": 0.16979479789733887
+  },
+  {
+    "round": 2,
+    "global_accuracy": 0.04751239801631739,
+    "global_loss": 4.3816609236658834,
+    "participating_devices": 6,
+    "participating_zones": 0,
+    "communication_cost_mb": 21.1413818359375,
+    "zone_metrics": {
+      "zone_0": {
+        "accuracy": 0.0
+      },
+      "zone_1": {
+        "accuracy": 0.0
+      },
+      "zone_2": {
+        "accuracy": 0.0069498069498069494
+      },
+      "zone_3": {
+        "accuracy": 0.19943555973659455
+      },
+      "zone_4": {
+        "accuracy": 0.1111111111111111
+      }
+    },
+    "aggregation_time": 0.13431763648986816
+  },
+  {
+    "round": 3,
+    "global_accuracy": 0.11054231322988321,
+    "global_loss": 3.5963947128276437,
+    "participating_devices": 4,
+    "participating_zones": 0,
+    "communication_cost_mb": 68.70949096679688,
+    "zone_metrics": {
+      "zone_0": {
+        "accuracy": 0.07883817427385892
+      },
+      "zone_1": {
+        "accuracy": 0.2102496714848883
+      },
+      "zone_2": {
+        "accuracy": 0.08494208494208494
+      },
+      "zone_3": {
+        "accuracy": 0.060206961429915336
+      },
+      "zone_4": {
+        "accuracy": 0.0935672514619883
+      }
+    },
+    "aggregation_time": 0.29596829414367676
+  },
+  {
+    "round": 4,
+    "global_accuracy": 0.08350663893776995,
+    "global_loss": 4.597629212603277,
+    "participating_devices": 6,
+    "participating_zones": 0,
+    "communication_cost_mb": 21.1413818359375,
+    "zone_metrics": {
+      "zone_0": {
+        "accuracy": 0.01007705986959099
+      },
+      "zone_1": {
+        "accuracy": 0.02759526938239159
+      },
+      "zone_2": {
+        "accuracy": 0.026254826254826256
+      },
+      "zone_3": {
+        "accuracy": 0.3057384760112888
+      },
+      "zone_4": {
+        "accuracy": 0.15204678362573099
+      }
+    },
+    "aggregation_time": 0.1355900764465332
+  },
+  {
+    "round": 5,
+    "global_accuracy": 0.294192929131339,
+    "global_loss": 2.96012019198768,
+    "participating_devices": 3,
+    "participating_zones": 0,
+    "communication_cost_mb": 67.38815460205078,
+    "zone_metrics": {
+      "zone_0": {
+        "accuracy": 0.2566686425607587
+      },
+      "zone_1": {
+        "accuracy": 0.4921156373193167
+      },
+      "zone_2": {
+        "accuracy": 0.2517374517374517
+      },
+      "zone_3": {
+        "accuracy": 0.14769520225776106
+      },
+      "zone_4": {
+        "accuracy": 0.2543859649122807
+      }
+    },
+    "aggregation_time": 0.17399168014526367
+  }
+]

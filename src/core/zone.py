@@ -179,7 +179,7 @@ class Zone:
                     continue
 
                 res_dict, device_id = res
-                if res_dict["success"]:
+                if res_dict["success"]  and device_id in self.devices:
                     device_updates[device_id] = res_dict["gradient"]
                     device_participation[device_id] += 1
 

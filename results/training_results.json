@@ -1,29 +1,39 @@
 {
-  "total_rounds": 1,
-  "total_training_time": 11.925614356994629,
-  "final_accuracy": 0.015,
-  "final_loss": 4.6070704609155655,
-  "average_round_time": 0.0,
-  "total_communication_cost": 0,
+  "total_rounds": 7,
+  "total_training_time": 7483.021500825882,
+  "final_accuracy": 0.10382338825787873,
+  "final_loss": 5.500200051434186,
+  "average_round_time": 1231.0883613030117,
+  "total_communication_cost": 269.5526184082031,
   "device_participation_stats": {
-    "device_3": 1,
-    "device_23": 1,
-    "device_18": 1,
-    "device_4": 1,
-    "device_25": 1,
-    "device_24": 1,
-    "device_28": 1,
-    "device_8": 1,
-    "device_16": 1,
-    "device_17": 1,
-    "device_6": 1,
-    "device_29": 1,
-    "device_0": 1,
-    "device_19": 1,
-    "device_2": 1,
+    "device_8": 3,
+    "device_18": 2,
+    "device_7": 3,
+    "device_17": 4,
+    "device_16": 3,
+    "device_19": 3,
+    "device_23": 4,
+    "device_28": 3,
+    "device_4": 2,
     "device_9": 1,
-    "device_11": 1,
-    "device_7": 1
+    "device_24": 3,
+    "device_25": 4,
+    "device_29": 4,
+    "device_0": 4,
+    "device_3": 2,
+    "device_6": 4,
+    "device_2": 2,
+    "device_11": 4,
+    "device_22": 2,
+    "device_15": 3,
+    "device_1": 1,
+    "device_14": 1,
+    "device_20": 2,
+    "device_12": 2,
+    "device_10": 2,
+    "device_21": 1,
+    "device_26": 1,
+    "device_27": 1
   },
   "convergence_rounds": -1,
   "zone_discovery_stats": {
@@ -32,5 +42,34 @@
     "total_migrations": 0,
     "migration_history_size": 0
   },
-  "aggregation_stats": {}
+  "aggregation_stats": {
+    "total_rounds": 7,
+    "zone_participation_rates": {
+      "zone_0": 1.0,
+      "zone_1": 1.0,
+      "zone_2": 1.0,
+      "zone_3": 1.0,
+      "zone_4": 1.0
+    },
+    "average_communication_cost_mb": 41.52771432059152,
+    "spatial_correlations": {
+      "average": 0.3695509886928064,
+      "maximum": 0.5217030999999999,
+      "total_pairs": 15
+    },
+    "staleness_distribution": {
+      "zone_0": 1,
+      "zone_1": 1,
+      "zone_2": 1,
+      "zone_3": 0,
+      "zone_4": 1
+    },
+    "current_zone_weights": {
+      "zone_0": 0.22692398726940155,
+      "zone_1": 0.22428181767463684,
+      "zone_2": 0.21050027012825012,
+      "zone_3": 0.194188192486763,
+      "zone_4": 0.1441056728363037
+    }
+  }
 }

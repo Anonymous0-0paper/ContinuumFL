@@ -117,12 +117,9 @@ class FederatedDataset:
         if os.path.exists(os.path.join(femnist_path, 'train.pkl')):
             print("Loading existing FEMNIST data...")
             with open(os.path.join(femnist_path, 'train.pkl'), 'rb') as f:
-                train_dict = pickle.load(f)
+                train_ds = pickle.load(f)
             with open(os.path.join(femnist_path, 'test.pkl'), 'rb') as f:
-                test_dict = pickle.load(f)
-
-            train_ds = self._dict_to_dataset(train_dict)
-            test_ds = self._dict_to_dataset(test_dict)
+                test_ds = pickle.load(f)
 
             self.process_femnist(train_ds, test_ds)
             return
@@ -159,21 +156,11 @@ class FederatedDataset:
         train_ds = split_ds['train']
         test_ds = split_ds['test']
 
-        train_dict = {
-            'image': train_ds['image'],
-            'character': train_ds['character'],
-        }
         with open(os.path.join(femnist_path, 'train.pkl'), 'wb') as f:
-            pickle.dump(train_dict, f)
-        del train_dict
+            pickle.dump(train_ds, f)
 
-        test_dict = {
-            'image': test_ds['image'],
-            'character': test_ds['character'],
-        }
         with open(os.path.join(femnist_path, 'test.pkl'), 'wb') as f:
-            pickle.dump(test_dict, f)
-        del test_dict
+            pickle.dump(test_ds, f)
 
         self.process_femnist(train_ds, test_ds)
 

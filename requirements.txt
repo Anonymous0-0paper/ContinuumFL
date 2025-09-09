@@ -34,6 +34,10 @@ notebook
 urllib3
 zipfile36
 
+
+# For Memory Log
+psutil
+
 # JSON handling (usually included in Python standard library)
 # json
 
