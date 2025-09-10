@@ -56,6 +56,8 @@ def parse_arguments():
                        help='Weight for network similarity')
     parser.add_argument('--spatial_regularization', type=float, default=0.1,
                        help='Spatial regularization parameter')
+    parser.add_argument('--correlation_threshold', type=float, default=0.05,
+                        help='Correlation threshold for neighborship')
     parser.add_argument('--compression_rate', type=float, default=0.1,
                         help='Gradient compression rate')
     parser.add_argument('--intra_zone_alpha', type=float, default=10,
@@ -159,6 +161,7 @@ def setup_configuration(args) -> ContinuumFLConfig:
     config.similarity_weights['data'] = args.data_weight
     config.similarity_weights['network'] = args.network_weight
     config.spatial_regularization = args.spatial_regularization
+    config.correlation_threshold = args.correlation_threshold
     config.compression_rate = args.compression_rate
     config.intra_zone_alpha = args.intra_zone_alpha
     config.inter_zone_alpha = args.inter_zone_alpha

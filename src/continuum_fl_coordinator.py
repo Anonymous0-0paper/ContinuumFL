@@ -167,7 +167,7 @@ class ContinuumFLCoordinator:
                 self.config.device = 'cpu'
         else:
             self.logger.info("Using CPU for computation")
-    
+
     def _create_edge_devices(self):
         """Create edge devices with heterogeneous resources and spatial distribution"""
         region_width, region_height = self.config.region_size
@@ -180,7 +180,7 @@ class ContinuumFLCoordinator:
                 np.random.uniform(0, region_width),
                 np.random.uniform(0, region_height)
             )
-            size = np.random.uniform(1, 5)
+            size = np.random.uniform(2, 5)
 
             physical_zone_locations.append(location)
             physical_zone_sizes.append(size)
@@ -190,29 +190,30 @@ class ContinuumFLCoordinator:
             physical_zone_assignment = np.random.choice(num_physical_zones, 1)[0]
 
             # Generate random location within zone
-            x = np.random.normal(physical_zone_locations[physical_zone_assignment][0], physical_zone_sizes[physical_zone_assignment])
+            x = np.random.normal(physical_zone_locations[physical_zone_assignment][0],
+                                 physical_zone_sizes[physical_zone_assignment])
             x = np.clip(x, 0, region_width)
 
-            y = np.random.normal(physical_zone_locations[physical_zone_assignment][1], physical_zone_sizes[physical_zone_assignment])
+            y = np.random.normal(physical_zone_locations[physical_zone_assignment][1],
+                                 physical_zone_sizes[physical_zone_assignment])
             y = np.clip(y, 0, region_height)
 
             location = (x, y)
-
             # Generate heterogeneous resources
             compute_capacity = np.random.uniform(*self.config.device_compute_range)
             memory_capacity = np.random.uniform(*self.config.device_memory_range)
             bandwidth = np.random.uniform(*self.config.device_bandwidth_range)
-            
+
             resources = DeviceResources(compute_capacity, memory_capacity, bandwidth)
-            
+
             # Create device
             device = EdgeDevice(device_id, location, resources)
-            
+
             # Set communication latency (will be updated based on zone assignment)
             device.communication_latency = np.random.uniform(*self.config.intra_zone_latency_range)
-            
+
             self.devices[device_id] = device
-        
+
         self.logger.info(f"Created {len(self.devices)} edge devices")
     
     def _distribute_data_to_devices(self):
@@ -242,10 +243,10 @@ class ContinuumFLCoordinator:
                         zone_dataset_sizes[device.zone_id] += device.dataset_size
         for zone_id, zone in self.zones.items():
             zone.total_dataset_size = zone_dataset_sizes[zone_id]
+
         # Analyze data distribution
-        distribution_analysis = self.dataset.analyze_data_distribution(zones=self.zones)
-        self.logger.info(f"Data distribution: {distribution_analysis}")
-    
+        # distribution_analysis = self.dataset.analyze_data_distribution(zones=self.zones)
+
     def _setup_device_models(self):
         """Setup local models for each device"""
         for device in self.devices.values():
@@ -293,6 +294,7 @@ class ContinuumFLCoordinator:
                     # 3. Hierarchical aggregation
                     zone_weights = {}
                     participating_devices = []
+                    total_participating_devices = []
                     start_time = time.time()
                     communication_cost = 0
                     total_num_device_updates = 0
@@ -301,6 +303,7 @@ class ContinuumFLCoordinator:
                         zone_id, aggregated_weights, local_stats = f.result()
 
                         participating_devices = local_stats["participating_devices"]
+                        total_participating_devices.extend(participating_devices)
                         num_device_updates = local_stats["num_device_updates"]
                         intra_time += local_stats["intra_time"]
                         communication_cost += local_stats["communication_cost"]
@@ -313,10 +316,9 @@ class ContinuumFLCoordinator:
                     intra_time /= len(done)
                     inter_start = time.time()
                     inter_zone_aggregated_weights = self.aggregator.inter_zone_aggregation(
-                        global_weights=self.global_model.clone().state_dict(), zone_weights=zone_weights, zones=self.zones)
+                        zone_weights=zone_weights, zones=self.zones)
                     inter_time = time.time() - inter_start
                     total_time = time.time() - start_time
-
                     aggregation_stats = self.aggregator.federated_aggregation_round(zones=self.zones,
                                                                 num_device_updates=total_num_device_updates,
                                                                 participating_zones=list(zone_weights.keys()),
@@ -324,18 +326,13 @@ class ContinuumFLCoordinator:
                                                                 intra_time=intra_time,
                                                                 inter_time=inter_time,
                                                                 comm_cost=communication_cost)
-
                     if inter_zone_aggregated_weights:
-                        model_state = self.global_model.state_dict()
-                        for k in model_state.keys():
-                            if model_state[k].dtype.is_floating_point:
-                                model_state[k] = model_state[k].cpu() + inter_zone_aggregated_weights[k]
-                        self.global_model.load_state_dict(model_state)
+                        self.global_model.load_state_dict(inter_zone_aggregated_weights)
                     else:
                         self.logger.warning("No device updates received in this round")
                         aggregation_stats = {"participating_devices": 0, "participating_zones": 0}
                     # 4. Evaluation
-                    round_metrics = self._evaluate_round(participating_devices, aggregation_stats)
+                    round_metrics = self._evaluate_round(total_participating_devices, aggregation_stats)
 
                     # 5. Track performance
                     round_time = time.time() - round_start_time

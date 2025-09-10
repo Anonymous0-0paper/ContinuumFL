@@ -37,7 +37,10 @@ class ZoneDiscovery:
         self.min_zone_size = config.min_zone_size              # n_min
         self.max_zone_size = config.max_zone_size              # n_max
         self.distance_scaling = config.distance_scaling        # σ
-        
+
+        # Neighborship parameters
+        self.correlation_threshold = config.correlation_threshold
+
         # Stability parameters
         self.stability_tradeoff = config.stability_tradeoff    # γ
         self.stability_threshold = config.stability_threshold  # θ_stability
@@ -347,7 +350,6 @@ class ZoneDiscovery:
             for zone in existing_zones.values():
                 for device_id in zone.device_ids:
                     old_assignments[device_id] = zone.zone_id
-        
         # Phase 1: Initial clustering
         active_devices = [d for d in devices if d.is_active]
         
@@ -389,7 +391,7 @@ class ZoneDiscovery:
         # Phase 4: Update spatial correlations
         for zone in zones.values():
             zone.update_spatial_correlations(zones)
-            zone.identify_neighbor_zones(zones)
+            zone.identify_neighbor_zones(zones, correlation_threshold=self.correlation_threshold)
         
         # Update migration history for stability
         self.update_migration_history(old_assignments, new_assignments)
@@ -456,7 +458,7 @@ class ZoneDiscovery:
         if reassignments:
             for zone in zones.values():
                 zone.update_spatial_correlations(zones)
-                zone.identify_neighbor_zones(zones)
+                zone.identify_neighbor_zones(zones, correlation_threshold=self.correlation_threshold)
         
         return zones
     
