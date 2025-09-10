@@ -10,6 +10,8 @@ from collections import defaultdict, deque
 import networkx as nx
 from sklearn.cluster import KMeans
 import time
+from functools import lru_cache
+import hashlib
 
 from .device import EdgeDevice
 from .zone import Zone
@@ -47,6 +49,31 @@ class ZoneDiscovery:
         self.migration_history = defaultdict(lambda: defaultdict(deque))  # H(z_k, z_j)
         self.zone_assignments_history = deque(maxlen=self.stability_window)
         self.current_round = 0
+        
+        # Similarity computation cache with expiration policies
+        self.similarity_cache = {}  # {cache_key: (timestamp, similarity_value)}
+        self.cache_expiration_time = 300  # 5 minutes cache expiration
+        self.last_cache_cleanup = time.time()
+    
+    def _cleanup_cache(self):
+        """Clean up expired cache entries"""
+        current_time = time.time()
+        if current_time - self.last_cache_cleanup > 60:  # Clean up every minute
+            expired_keys = []
+            for key, (timestamp, _) in self.similarity_cache.items():
+                if current_time - timestamp > self.cache_expiration_time:
+                    expired_keys.append(key)
+            
+            for key in expired_keys:
+                del self.similarity_cache[key]
+            
+            self.last_cache_cleanup = current_time
+    
+    def _get_device_cache_key(self, device_i: EdgeDevice, device_j: EdgeDevice) -> str:
+        """Generate a cache key for device similarity computation"""
+        # Create a unique key based on device IDs
+        device_ids = sorted([device_i.device_id, device_j.device_id])
+        return f"{device_ids[0]}_{device_ids[1]}"
     
     def compute_device_similarity(self, device_i: EdgeDevice, 
                                 device_j: EdgeDevice) -> float:
@@ -56,35 +83,69 @@ class ZoneDiscovery:
         Implements Equation (5):
         Sim(d_i, d_j) = ω1·S_spatial + ω2·S_data + ω3·S_network
         """
+        # Check cache first
+        cache_key = self._get_device_cache_key(device_i, device_j)
+        current_time = time.time()
+        
+        # Clean up cache periodically
+        self._cleanup_cache()
+        
+        if cache_key in self.similarity_cache:
+            timestamp, cached_similarity = self.similarity_cache[cache_key]
+            if current_time - timestamp < self.cache_expiration_time:
+                return cached_similarity
+        
         # Spatial similarity - Equation (6)
         distance = device_i.compute_spatial_distance(device_j)
         spatial_sim = np.exp(-distance / self.distance_scaling)
         if self.current_round == 0:
-            return spatial_sim
-        # Data similarity - Equation (7) 
-        data_sim = device_i.compute_gradient_similarity(device_j)
+            similarity = spatial_sim
+        else:
+            # Data similarity - Equation (7) 
+            data_sim = device_i.compute_gradient_similarity(device_j)
+            
+            # Network similarity - described after Equation (7)
+            network_sim = device_i.compute_network_similarity(device_j)
+            
+            # Combined similarity
+            similarity = (self.spatial_weight * spatial_sim + 
+                         self.data_weight * data_sim + 
+                         self.network_weight * network_sim)
         
-        # Network similarity - described after Equation (7)
-        network_sim = device_i.compute_network_similarity(device_j)
+        # Cache the result
+        self.similarity_cache[cache_key] = (current_time, similarity)
         
-        # Combined similarity
-        total_sim = (self.spatial_weight * spatial_sim + 
-                    self.data_weight * data_sim + 
-                    self.network_weight * network_sim)
-        
-        return total_sim
+        return similarity
     
     def compute_similarity_matrix(self, devices: List[EdgeDevice]) -> np.ndarray:
         """Compute pairwise similarity matrix for all devices"""
         n_devices = len(devices)
-        similarity_matrix = np.zeros((n_devices, n_devices))
         
-        for i, device_i in enumerate(devices):
-            for j, device_j in enumerate(devices):
-                if i != j:
-                    similarity_matrix[i, j] = self.compute_device_similarity(device_i, device_j)
-                else:
-                    similarity_matrix[i, j] = 1.0  # Self-similarity
+        # Check if we can use GPU acceleration
+        use_gpu = torch.cuda.is_available()
+        
+        if use_gpu:
+            # Use GPU for parallel computation
+            device_locations = torch.tensor([[d.location[0], d.location[1]] for d in devices], 
+                                          dtype=torch.float32, device='cuda')
+            
+            # Compute pairwise distances on GPU
+            diff = device_locations.unsqueeze(1) - device_locations.unsqueeze(0)
+            distances = torch.norm(diff, dim=2)
+            spatial_similarities = torch.exp(-distances / self.distance_scaling)
+            
+            # Convert back to CPU for further processing if needed
+            similarity_matrix = spatial_similarities.cpu().numpy()
+        else:
+            # Fallback to CPU computation
+            similarity_matrix = np.zeros((n_devices, n_devices))
+            
+            for i, device_i in enumerate(devices):
+                for j, device_j in enumerate(devices):
+                    if i != j:
+                        similarity_matrix[i, j] = self.compute_device_similarity(device_i, device_j)
+                    else:
+                        similarity_matrix[i, j] = 1.0  # Self-similarity
         
         return similarity_matrix
     
@@ -135,9 +196,63 @@ class ZoneDiscovery:
         
         return clusters
     
+    def _compute_cluster_similarities_gpu(self, clusters: List[Set[int]], 
+                                        devices: List[EdgeDevice]) -> List[List[float]]:
+        """Compute similarity between clusters using GPU acceleration"""
+        if not torch.cuda.is_available():
+            return self._compute_cluster_similarities(clusters, devices)
+        
+        try:
+            n_clusters = len(clusters)
+            similarities = torch.zeros((n_clusters, n_clusters), dtype=torch.float32, device='cuda')
+            
+            # Convert device locations to GPU tensors
+            device_locations = torch.tensor([[d.location[0], d.location[1]] for d in devices], 
+                                          dtype=torch.float32, device='cuda')
+            
+            # Compute cluster similarities in parallel on GPU
+            for i, cluster_i in enumerate(clusters):
+                if not cluster_i:
+                    continue
+                    
+                cluster_i_tensor = torch.tensor(list(cluster_i), dtype=torch.long, device='cuda')
+                locations_i = device_locations[cluster_i_tensor]
+                
+                for j, cluster_j in enumerate(clusters):
+                    if i == j:
+                        similarities[i, j] = 1.0
+                        continue
+                        
+                    if not cluster_j:
+                        continue
+                        
+                    cluster_j_tensor = torch.tensor(list(cluster_j), dtype=torch.long, device='cuda')
+                    locations_j = device_locations[cluster_j_tensor]
+                    
+                    # Compute pairwise distances between clusters
+                    diff = locations_i.unsqueeze(1) - locations_j.unsqueeze(0)
+                    distances = torch.norm(diff, dim=2)
+                    avg_distance = torch.mean(distances)
+                    similarity = torch.exp(-avg_distance / self.distance_scaling)
+                    similarities[i, j] = similarity.cpu()  # Move back to CPU for final result
+            
+            return similarities.cpu().numpy().tolist()
+        except Exception as e:
+            # Fallback to CPU if GPU computation fails
+            print(f"GPU computation failed, falling back to CPU: {e}")
+            return self._compute_cluster_similarities(clusters, devices)
+    
     def _compute_cluster_similarities(self, clusters: List[Set[int]], 
                                     devices: List[EdgeDevice]) -> List[List[float]]:
         """Compute similarity between clusters using average linkage"""
+        # Try GPU acceleration first
+        if torch.cuda.is_available():
+            try:
+                return self._compute_cluster_similarities_gpu(clusters, devices)
+            except Exception:
+                # Fallback to CPU if GPU computation fails
+                pass
+        
         n_clusters = len(clusters)
         similarities = [[0.0 for _ in range(n_clusters)] for _ in range(n_clusters)]
         
@@ -357,7 +472,7 @@ class ZoneDiscovery:
                 return existing_zones
             else:
                 # Create single zone
-                zone = Zone(zone_id="zone_0", edge_server_id="server_0")
+                zone = Zone(zone_id="zone_0", edge_server_id="server_0", compression_rate=self.config.compression_rate)
                 for device in active_devices:
                     zone.add_device(device)
                 return {"zone_0": zone}
@@ -377,7 +492,7 @@ class ZoneDiscovery:
             zone_id = f"zone_{i}"
             edge_server_id = f"server_{i}"
             
-            zone = Zone(zone_id=zone_id, edge_server_id=edge_server_id)
+            zone = Zone(zone_id=zone_id, edge_server_id=edge_server_id, compression_rate=self.config.compression_rate)
             
             for device_idx in cluster:
                 device = active_devices[device_idx]
@@ -420,20 +535,41 @@ class ZoneDiscovery:
                 continue
             
             current_zone_id = device.zone_id
-            
+
+            staying_cost = self.compute_reassignment_cost(
+                device, current_zone_id, current_zone_id, zones
+            )
+            min_reassignment_cost = np.inf
+            best_candidate = None
+
             # Evaluate alternative zones
             for candidate_zone_id, candidate_zone in zones.items():
                 if candidate_zone_id != current_zone_id:
-                    if self.should_reassign_device(device, current_zone_id, 
-                                                 candidate_zone_id, zones):
-                        reassignments.append((device.device_id, current_zone_id, candidate_zone_id))
+                    reassignment_cost = self.compute_reassignment_cost(
+                        device, current_zone_id, candidate_zone_id, zones
+                    )
+                    if reassignment_cost < min_reassignment_cost:
+                        min_reassignment_cost = reassignment_cost
+                        best_candidate = candidate_zone_id
+
+            should_reassign = min_reassignment_cost < staying_cost - self.stability_threshold
+            # Add hysteresis to prevent frequent reassignments
+            hysteresis_factor = 0.1
+            if should_reassign and min_reassignment_cost < staying_cost - self.stability_threshold - hysteresis_factor:
+                reassignments.append((device.device_id, current_zone_id, best_candidate))
         
-        # Apply reassignments
+        # Apply reassignments with size constraints
+        print(f"Reassignments: {reassignments}")
         for device_id, from_zone_id, to_zone_id in reassignments:
+            print(f"{device_id} is in {from_zone_id} but should be in {to_zone_id}.\n"
+                  f"{from_zone_id}: {zones[from_zone_id].devices}\n"
+                  f"{to_zone_id}: {zones[to_zone_id].devices}")
             if from_zone_id in zones and to_zone_id in zones:
-                device = zones[from_zone_id].devices[device_id]
-                zones[from_zone_id].remove_device(device_id)
-                zones[to_zone_id].add_device(device)
+                # Check size constraints before reassignment
+                if len(zones[to_zone_id].devices) < self.max_zone_size and len(zones[from_zone_id].devices) > self.min_zone_size:
+                    device = zones[from_zone_id].devices[device_id]
+                    zones[from_zone_id].remove_device(device_id)
+                    zones[to_zone_id].add_device(device)
         
         # Update correlations if reassignments occurred
         if reassignments:

@@ -20,7 +20,7 @@ class ContinuumFLConfig:
         }
         self.similarity_threshold = 0.6  # θ - clustering threshold
         self.min_zone_size = 3           # n_min
-        self.max_zone_size = 10          # n_max
+        self.max_zone_size = 20          # n_max
         self.distance_scaling = 10.0     # σ - distance scaling parameter
         self.stability_tradeoff = 0.3    # γ - stability vs optimality
         self.stability_threshold = 0.1   # θ_stability
@@ -37,18 +37,18 @@ class ContinuumFLConfig:
         # Aggregation Parameters
         self.spatial_regularization = 0.1  # λ - spatial regularization
         self.momentum_eta = 0.9             # η - momentum for correlation update
-        self.staleness_penalty = 0.1       # μ - staleness penalty
+        self.staleness_penalty = 0.01       # μ - staleness penalty
         self.max_staleness = 5             # τ_max - maximum staleness
         self.fairness_strength = 0.5       # α_fair - fairness enforcement
         
         # Communication Optimization
         self.compression_rate = 0.1      # κ - gradient compression rate (top-k)
-        self.quantization_bits = 8       # bits for delta encoding
+        self.quantization_bits = 16       # bits for delta encoding
         self.cache_threshold = 0.95      # τ_cache - caching stability threshold
         
         # Resource Parameters
         self.total_bandwidth = 1000.0    # MB/s - total available bandwidth
-        self.deadline_constraint = 60    # seconds - round deadline
+        self.deadline_constraint = 180    # seconds - round deadline
         
         # Device Heterogeneity Simulation
         self.device_compute_range = (1.0, 10.0)     # GFLOPS range
@@ -61,8 +61,8 @@ class ContinuumFLConfig:
         self.dataset_name = 'cifar100'   # Options: 'cifar100', 'femnist', 'shakespeare'
         self.max_samples = 100            # Limit Dataset-Size (use -1 for full dataset)
         self.data_distribution = 'dirichlet'  # Data distribution type
-        self.intra_zone_alpha = 1000      # Dirichlet α for intra-zone
-        self.inter_zone_alpha = 1000      # Dirichlet α for inter-zone
+        self.intra_zone_alpha = 100       # Dirichlet α for intra-zone
+        self.inter_zone_alpha = 100      # Dirichlet α for inter-zone
         self.train_test_split = 0.8
         
         # Model Configuration
@@ -79,10 +79,10 @@ class ContinuumFLConfig:
             },
             'shakespeare': {
                 'model_type': 'lstm',
-                'vocab_size': 80,
+                'vocab_size': 120,
                 'embedding_dim': 64,
                 'hidden_dim': 256,
-                'num_layers': 3
+                'num_layers': 10
             }
         }
         
@@ -99,6 +99,7 @@ class ContinuumFLConfig:
         self.random_seed = 42
         self.device = 'cuda'             # 'cuda' or 'cpu'
         self.num_workers = 4             # for data loading
+        self.use_async = False           # Use asynchronous processing
         
         # Baseline Comparisons
         self.baselines = ['fedavg', 'fedprox', 'hierfl', 'clusterfl']

@@ -2,6 +2,9 @@
 ContinuumFL Coordinator - Main orchestrator for the spatial-aware federated learning framework.
 Implements the complete ContinuumFL protocol from the paper.
 """
+from asyncio import FIRST_COMPLETED
+from concurrent.futures import Future
+import asyncio
 
 import torch
 import torch.nn as nn
@@ -9,9 +12,12 @@ import numpy as np
 import time
 import os
 import json
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Dict, List, Optional, Any
 from collections import defaultdict, deque
 import logging
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, wait
+
+from torch import Tensor
 
 from .core.device import EdgeDevice, DeviceResources
 from .core.zone import Zone
@@ -21,6 +27,7 @@ from .data.federated_dataset import FederatedDataset
 from .models.model_factory import ModelFactory
 from .communication.compression import GradientCompressor
 from .baselines.baseline_fl import BaselineFLMethods
+from .memory_log.memory_log import log_mem
 
 class ContinuumFLCoordinator:
     """
@@ -67,6 +74,10 @@ class ContinuumFLCoordinator:
         
         # Set random seeds for reproducibility
         self._set_random_seeds()
+        
+        # Async processing
+        self.use_async = True
+        self.max_workers = min(32, os.cpu_count() + 4)
         
         self.logger.info("ContinuumFL Coordinator initialized")
     
@@ -246,6 +257,40 @@ class ContinuumFLCoordinator:
             if device.local_dataset:
                 device.set_local_model(self.global_model)
     
+    def _start_local_training(self, args) -> tuple[
+        ThreadPoolExecutor, list[Future[tuple[str, dict[str, Tensor], dict[str, list[str] | int]]]]]:
+        """Start local training in all Zones"""
+
+        # Use ProcessPoolExecutor for CPU-bound tasks to bypass Python's GIL
+        if self.config.device == 'cpu':
+            executor = ProcessPoolExecutor(max_workers=self.max_workers)
+        else:
+            executor = ThreadPoolExecutor(max_workers=self.max_workers)
+        
+        # Start training for all zones
+        futures = [executor.submit(zone.perform_local_training, args) for zone_id, zone in self.zones.items()]
+
+        return executor, futures
+    
+    async def _start_local_training_async(self, args) -> tuple[
+        ThreadPoolExecutor, list[asyncio.Future]]:
+        """Asynchronously start local training in all Zones"""
+        loop = asyncio.get_event_loop()
+        
+        # Use ProcessPoolExecutor for CPU-bound tasks to bypass Python's GIL
+        if self.config.device == 'cpu':
+            executor = ProcessPoolExecutor(max_workers=self.max_workers)
+        else:
+            executor = ThreadPoolExecutor(max_workers=self.max_workers)
+        
+        # Start training for all zones asynchronously
+        futures = []
+        for zone_id, zone in self.zones.items():
+            future = loop.run_in_executor(executor, zone.perform_local_training, args)
+            futures.append(future)
+
+        return executor, futures
+    
     def run_federated_learning(self) -> Dict[str, Any]:
         """
         Run the complete ContinuumFL federated learning process.
@@ -258,56 +303,121 @@ class ContinuumFLCoordinator:
         training_start_time = time.time()
         
         try:
-            for round_num in range(self.config.num_rounds):
-                self.current_round = round_num
+            args = {
+                "comp_device": self.config.device,
+                "model": self.global_model,
+                "learning_rate": self.config.learning_rate,
+                "epochs": self.config.local_epochs,
+                "device_participation": self.device_participation
+            }
+
+            # 2. Start training in all zones
+            executor, futures = self._start_local_training(args)
+            round_num = 0
+            while futures and round_num < self.config.num_rounds:
                 round_start_time = time.time()
-                
+
                 self.logger.info(f"\n=== Round {round_num + 1}/{self.config.num_rounds} ===")
-                
+                log_mem(f"Round {round_num + 1}")
+
                 # 1. Zone discovery/update (periodic)
-                if round_num % 10 == 0 and round_num > 0:  # Every 10 rounds
+                if round_num % 1 == 0 and round_num > 0:  # Every 10 rounds
                     self.logger.info("Updating zone assignments...")
                     device_list = [d for d in self.devices.values() if d.is_active]
                     self.zones = self.zone_discovery.adaptive_zone_update(device_list, self.zones)
+                done, _ = wait(futures, return_when=FIRST_COMPLETED)
+                self.logger.info(f"Aggregating gradients of {len(done)} Zone(s)...")
 
-                # 2. Device sampling and local training
-                participating_devices = self._sample_participating_devices()
-                device_updates = self._perform_local_training(participating_devices)
-                
                 # 3. Hierarchical aggregation
-                if device_updates:
-                    global_weights, aggregation_stats = self.aggregator.federated_aggregation_round(
-                        self.zones, device_updates
+                zone_weights = {}
+                participating_devices = []
+                start_time = time.time()
+                communication_cost = 0
+                total_num_device_updates = 0
+                intra_time = 0
+                participating_zone_ids = []  # Track participating zone IDs
+                for f in done:
+                    zone_id, aggregated_weights, local_stats = f.result()
+
+                    participating_devices = local_stats["participating_devices"]
+                    num_device_updates = local_stats["num_device_updates"]
+                    intra_time += local_stats["intra_time"]
+                    communication_cost += local_stats["communication_cost"]
+                    total_num_device_updates += num_device_updates
+                    self.logger.info(
+                        f"({zone_id}) Local training completed: {num_device_updates}/{len(participating_devices)} devices")
+                    communication_cost += local_stats["communication_cost"]
+                    zone_weights[zone_id] = aggregated_weights
+                    participating_zone_ids.append(zone_id)  # Track participating zones
+                    futures.remove(f)
+                intra_time /= len(done)
+                inter_start = time.time()
+                
+                # Use async aggregation if enabled
+                if self.use_async:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    inter_zone_aggregated_weights = loop.run_until_complete(
+                        self.aggregator.async_inter_zone_aggregation(
+                            global_weights=self.global_model.state_dict(), 
+                            zone_weights=zone_weights, 
+                            zones=self.zones
+                        )
                     )
-                    
-                    # Update global model
-                    if global_weights:
-                        model_state = self.global_model.state_dict()
-                        for k in model_state.keys():
-                            if model_state[k].dtype.is_floating_point:
-                                model_state[k] += global_weights[k]
-                        self.global_model.load_state_dict(model_state)
+                    loop.close()
+                else:
+                    inter_zone_aggregated_weights = self.aggregator.inter_zone_aggregation(
+                        global_weights=self.global_model.state_dict(), 
+                        zone_weights=zone_weights, 
+                        zones=self.zones
+                    )
+                
+                inter_time = time.time() - inter_start
+                total_time = time.time() - start_time
+
+                aggregation_stats = self.aggregator.federated_aggregation_round(zones=self.zones,
+                                                            num_device_updates=total_num_device_updates,
+                                                            participating_zones=participating_zone_ids,  # Use actual participating zones
+                                                            total_time=total_time,
+                                                            intra_time=intra_time,
+                                                            inter_time=inter_time,
+                                                            comm_cost=communication_cost)
+
+                if inter_zone_aggregated_weights:
+                    model_state = self.global_model.state_dict()
+                    for k in model_state.keys():
+                        if model_state[k].dtype.is_floating_point:
+                            # Ensure both tensors are on the same device before operation
+                            aggregated_tensor = inter_zone_aggregated_weights[k]
+                            if model_state[k].device != aggregated_tensor.device:
+                                aggregated_tensor = aggregated_tensor.to(model_state[k].device)
+                            # Use in-place addition for better memory management
+                            model_state[k].add_(aggregated_tensor)
+                    self.global_model.load_state_dict(model_state)
                 else:
                     self.logger.warning("No device updates received in this round")
                     aggregation_stats = {"participating_devices": 0, "participating_zones": 0}
-                
                 # 4. Evaluation
                 round_metrics = self._evaluate_round(participating_devices, aggregation_stats)
-                
-                # 5. Broadcast updated model
-                self._broadcast_global_model()
-                
-                # 6. Track performance
+
+                # 5. Track performance
                 round_time = time.time() - round_start_time
                 self.round_times.append(round_time)
                 self.training_history.append(round_metrics)
-                
+
                 # Log round results
                 self._log_round_results(round_num, round_metrics, round_time)
-                
+
                 # Save checkpoint periodically
                 if (round_num + 1) % self.config.save_interval == 0:
                     self._save_checkpoint(round_num + 1)
+
+                self.current_round += 1
+                round_num = self.current_round
+                # Restart training for aggregated zones
+                for zone_id in zone_weights.keys():
+                    futures.append(executor.submit(self.zones[zone_id].perform_local_training, args))
+            executor.shutdown(wait=False)
         
         except KeyboardInterrupt:
             self.logger.info("Training interrupted by user")
@@ -324,60 +434,143 @@ class ContinuumFLCoordinator:
         
         self.logger.info("Federated learning completed")
         return final_results
-    
-    def _sample_participating_devices(self) -> List[str]:
-        """Sample devices for participation in current round"""
-        # Simple participation strategy: random sampling with availability check
-        available_devices = [
-            device_id for device_id, device in self.devices.items()
-            if device.is_active and device.local_dataset
-        ]
+
+    async def run_federated_learning_async(self) -> Dict[str, Any]:
+        """
+        Asynchronously run the complete ContinuumFL federated learning process.
         
-        # Sample fraction of available devices
-        participation_rate = 0.7  # 70% participation rate
-        num_participants = max(1, int(participation_rate * len(available_devices)))
+        Implements Algorithm 2: ContinuumFL Aggregation Protocol with async/await.
+        """
+        self.logger.info(f"Starting asynchronous federated learning for {self.config.num_rounds} rounds")
         
-        participating = np.random.choice(
-            available_devices, size=num_participants, replace=False
-        ).tolist()
+        self.is_training = True
+        training_start_time = time.time()
         
-        return participating
-    
-    def _perform_local_training(self, participating_devices: List[str]) -> Dict[str, Dict[str, torch.Tensor]]:
-        """Perform local training on participating devices"""
-        device_updates = {}
-        
-        for device_id in participating_devices:
-            device = self.devices[device_id]
+        try:
+            args = {
+                "comp_device": self.config.device,
+                "model": self.global_model,
+                "learning_rate": self.config.learning_rate,
+                "epochs": self.config.local_epochs,
+                "device_participation": self.device_participation
+            }
+
+            # 2. Start training in all zones asynchronously
+            executor, futures = await self._start_local_training_async(args)
+            round_num = 0
             
-            # Simulate device failure
-            device.simulate_failure()
-            if not device.is_active:
-                continue
-            
-            # Perform local training
-            training_result = device.local_train(
-                self.global_model,
-                epochs=self.config.local_epochs,
-                learning_rate=self.config.learning_rate,
-                device=self.config.device
-            )
-            
-            if training_result["success"]:
-                device_updates[device_id] = training_result["gradient"]
+            while futures and round_num < self.config.num_rounds:
+                round_start_time = time.time()
+
+                self.logger.info(f"\n=== Round {round_num + 1}/{self.config.num_rounds} ===")
+                log_mem(f"Round {round_num + 1}")
+
+                # 1. Zone discovery/update (periodic)
+                if round_num % 1 == 0 and round_num > 0:  # Every 10 rounds
+                    self.logger.info("Updating zone assignments...")
+                    device_list = [d for d in self.devices.values() if d.is_active]
+                    self.zones = self.zone_discovery.adaptive_zone_update(device_list, self.zones)
                 
-                # Update device participation tracking
-                self.device_participation[device_id] += 1
+                # Wait for at least one zone to complete
+                done, pending = await asyncio.wait(futures, return_when=asyncio.FIRST_COMPLETED)
+                self.logger.info(f"Aggregating gradients of {len(done)} Zone(s)...")
+
+                # 3. Hierarchical aggregation
+                zone_weights = {}
+                participating_devices = []
+                start_time = time.time()
+                communication_cost = 0
+                total_num_device_updates = 0
+                intra_time = 0
+                
+                for f in done:
+                    zone_id, aggregated_weights, local_stats = await f
+                    
+                    participating_devices = local_stats["participating_devices"]
+                    num_device_updates = local_stats["num_device_updates"]
+                    intra_time += local_stats["intra_time"]
+                    communication_cost += local_stats["communication_cost"]
+                    total_num_device_updates += num_device_updates
+                    self.logger.info(
+                        f"({zone_id}) Local training completed: {num_device_updates}/{len(participating_devices)} devices")
+                    communication_cost += local_stats["communication_cost"]
+                    zone_weights[zone_id] = aggregated_weights
+                    futures.remove(f)
+                
+                intra_time /= len(done)
+                inter_start = time.time()
+                
+                # Perform inter-zone aggregation asynchronously
+                inter_zone_aggregated_weights = await self.aggregator.async_inter_zone_aggregation(
+                    global_weights=self.global_model.state_dict(), 
+                    zone_weights=zone_weights, 
+                    zones=self.zones
+                )
+                
+                inter_time = time.time() - inter_start
+                total_time = time.time() - start_time
+
+                aggregation_stats = self.aggregator.federated_aggregation_round(zones=self.zones,
+                                                            num_device_updates=total_num_device_updates,
+                                                            participating_zones=list(zone_weights.keys()),
+                                                            total_time=total_time,
+                                                            intra_time=intra_time,
+                                                            inter_time=inter_time,
+                                                            comm_cost=communication_cost)
+
+                if inter_zone_aggregated_weights:
+                    model_state = self.global_model.state_dict()
+                    for k in model_state.keys():
+                        if model_state[k].dtype.is_floating_point:
+                            # Use in-place operations to reduce memory fragmentation
+                            model_state[k].add_(inter_zone_aggregated_weights[k].cpu())
+                    self.global_model.load_state_dict(model_state)
+                else:
+                    self.logger.warning("No device updates received in this round")
+                    aggregation_stats = {"participating_devices": 0, "participating_zones": 0}
+                
+                # 4. Evaluation
+                round_metrics = self._evaluate_round(participating_devices, aggregation_stats)
+
+                # 5. Track performance
+                round_time = time.time() - round_start_time
+                self.round_times.append(round_time)
+                self.training_history.append(round_metrics)
+
+                # Log round results
+                self._log_round_results(round_num, round_metrics, round_time)
+
+                # Save checkpoint periodically
+                if (round_num + 1) % self.config.save_interval == 0:
+                    self._save_checkpoint(round_num + 1)
+
+                self.current_round += 1
+                round_num = self.current_round
+                
+                # Restart training for aggregated zones
+                for zone_id in zone_weights.keys():
+                    future = asyncio.get_event_loop().run_in_executor(
+                        executor, self.zones[zone_id].perform_local_training, args)
+                    futures.append(future)
             
-            # Update device reliability based on participation
-            if device_id in device_updates:
-                device.participation_history.append(1)
-            else:
-                device.participation_history.append(0)
+            executor.shutdown(wait=False)
         
-        self.logger.info(f"Local training completed: {len(device_updates)}/{len(participating_devices)} devices")
-        return device_updates
-    
+        except KeyboardInterrupt:
+            self.logger.info("Training interrupted by user")
+        except Exception as e:
+            self.logger.error(f"Training failed: {str(e)}")
+            raise
+        finally:
+            self.is_training = False
+        
+        total_training_time = time.time() - training_start_time
+        
+        # Final evaluation and results
+        final_results = self._finalize_training(total_training_time)
+        
+        self.logger.info("Federated learning completed")
+        return final_results
+
     def _evaluate_round(self, participating_devices: List[str], 
                        aggregation_stats: Dict[str, Any]) -> Dict[str, Any]:
         """Evaluate the current round performance"""
@@ -442,14 +635,11 @@ class ContinuumFLCoordinator:
                     output = output[0]
                 
                 loss = criterion(output, target)
-                total_loss += loss.item()
+                total_loss += loss.detach().item()
                 
                 pred = output.argmax(dim=1, keepdim=True)
                 correct += pred.eq(target.view_as(pred)).sum().item()
                 total += target.size(0)
-
-                if batch_idx % 20 == 0:
-                    print(f"Loss: {loss}")
         accuracy = correct / max(total, 1)
         avg_loss = total_loss / max(len(test_dataloader), 1)
         
@@ -660,20 +850,6 @@ class ContinuumFLCoordinator:
             "recent_loss": self.losses[-1] if self.losses else float('inf'),
             "total_communication_cost": sum(self.communication_costs)
         }
-    
-    def load_checkpoint(self, checkpoint_path: str):
-        """Load training from checkpoint"""
-        checkpoint = torch.load(checkpoint_path)
-        
-        self.global_model.load_state_dict(checkpoint["global_model_state"])
-        self.current_round = checkpoint["round"]
-        self.training_history = deque(checkpoint["training_history"], maxlen=1000)
-        self.device_participation = defaultdict(int, checkpoint["device_participation"])
-        
-        # Update device models
-        self._broadcast_global_model()
-        
-        self.logger.info(f"Checkpoint loaded from round {self.current_round}")
     
     def run_baseline_comparison(self) -> Dict[str, Any]:
         """Run comparison with baseline methods"""

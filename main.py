@@ -11,7 +11,8 @@ import torch
 import numpy as np
 import time
 import json
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
+import asyncio
 
 # Add src to path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
@@ -57,8 +58,12 @@ def parse_arguments():
     parser.add_argument('--spatial_regularization', type=float, default=0.1,
                        help='Spatial regularization parameter')
     parser.add_argument('--compression_rate', type=float, default=0.1,
-                       help='Gradient compression rate')
-    
+                        help='Gradient compression rate')
+    parser.add_argument('--intra_zone_alpha', type=float, default=10,
+                        help='Dirichlet alpha value within zones')
+    parser.add_argument('--inter_zone_alpha', type=float, default=0.3,
+                        help='Dirichlet alpha value across zones')
+
     # Experiment options
     parser.add_argument('--run_baselines', action='store_true',
                        help='Run baseline comparison')
@@ -75,6 +80,8 @@ def parse_arguments():
                        help='Random seed for reproducibility')
     parser.add_argument('--config_file', type=str, default=None,
                        help='Path to configuration file')
+    parser.add_argument('--use_async', action='store_true',
+                       help='Use asynchronous processing')
     
     # Output options
     parser.add_argument('--log_dir', type=str, default='./logs',
@@ -156,10 +163,13 @@ def setup_configuration(args) -> ContinuumFLConfig:
     config.similarity_weights['network'] = args.network_weight
     config.spatial_regularization = args.spatial_regularization
     config.compression_rate = args.compression_rate
+    config.intra_zone_alpha = args.intra_zone_alpha
+    config.inter_zone_alpha = args.inter_zone_alpha
     
     # System options - GPU checking will be done separately
     config.device = args.device
     config.random_seed = args.random_seed
+    config.use_async = args.use_async
     
     # Output directories
     config.log_dir = args.log_dir
@@ -186,6 +196,7 @@ def print_experiment_info(config: ContinuumFLConfig, args):
     print(f"Spatial Regularization: {config.spatial_regularization}")
     print(f"Compression Rate: {config.compression_rate}")
     print(f"Compute Device: {config.device.upper()}")
+    print(f"Use Async Processing: {config.use_async}")
     
     # Show GPU details if using CUDA
     if config.device == 'cuda' and torch.cuda.is_available():
@@ -197,7 +208,7 @@ def print_experiment_info(config: ContinuumFLConfig, args):
     print(f"Run Baselines: {args.run_baselines}")
     print("="*80)
 
-def run_continuum_fl_experiment(config: ContinuumFLConfig) -> (Dict[str, Any], Any):
+def run_continuum_fl_experiment(config: ContinuumFLConfig) -> Tuple[Dict[str, Any], Any]:
     """Run the main ContinuumFL experiment"""
     
     print("\n🚀 Starting ContinuumFL Experiment...")
@@ -212,7 +223,15 @@ def run_continuum_fl_experiment(config: ContinuumFLConfig) -> (Dict[str, Any], A
     
     # Run federated learning
     print("🎯 Starting federated learning...")
-    training_results = coordinator.run_federated_learning()
+    if hasattr(config, 'use_async') and config.use_async:
+        # Run async version
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        training_results = loop.run_until_complete(coordinator.run_federated_learning_async())
+        loop.close()
+    else:
+        # Run synchronous version
+        training_results = coordinator.run_federated_learning()
     print("✅ ContinuumFL experiment completed!")
     return training_results, coordinator
 
@@ -308,7 +327,8 @@ def main():
     
     # Print experiment information
     print_experiment_info(config, args)
-    
+
+
     try:
         # Run main ContinuumFL experiment
         training_results, coordinator = run_continuum_fl_experiment(config)

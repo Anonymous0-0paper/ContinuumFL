@@ -9,6 +9,7 @@ from math import floor
 
 import datasets
 import numpy as np
+from src.core.zone import Zone
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, Subset
@@ -19,7 +20,6 @@ import pickle
 import json
 from collections import defaultdict
 from datasets import load_dataset, DownloadConfig
-from src.core.zone import Zone
 from src.models.model_factory import FEMNISTNet
 
 try:
@@ -355,24 +355,6 @@ class FederatedDataset:
         
         return TextDataset(data_dict['sequences'], data_dict['targets'])
     
-    def create_zone_distributions(self, num_zones: int, num_classes: int) -> Dict[str, np.ndarray]:
-        """
-        Create class distribution for each zone using Dirichlet distribution.
-        
-        Implements the spatial data heterogeneity model from the paper.
-        """
-        # Create zone-level class distributions
-        zone_distributions = {}
-        
-        # Generate Dirichlet distributions for zones
-        for zone_id in range(num_zones):
-            # Use inter-zone alpha for zone-level diversity
-            zone_dist = np.random.dirichlet([self.inter_zone_alpha] * num_classes)
-            zone_distributions[f"zone_{zone_id}"] = zone_dist
-        
-        self.zone_distributions = zone_distributions
-        return zone_distributions
-    
     def distribute_data_to_devices(self, devices: List[str], zones: Dict[str, List[str]]) -> Dict[str, Tuple[Subset, Subset]]:
         """
         Distribute data to devices with spatial non-IID characteristics.
@@ -399,8 +381,7 @@ class FederatedDataset:
         self.num_classes = num_classes
         # Create zone distributions
         num_zones = len(zones)
-        zone_distributions = self.create_zone_distributions(num_zones, num_classes)
-        
+
         # Get labels for train and test data
         if isinstance(self.train_data.targets, torch.Tensor):
             train_labels = self.train_data.targets.numpy()
@@ -506,7 +487,13 @@ class FederatedDataset:
             class_indices = test_class_indices[clazz]
             rng.shuffle(class_indices)
 
-            zone_distributions = zone_distribution_cache[clazz]
+            # Check if clazz exists in zone_distribution_cache, if not create it
+            if clazz not in zone_distribution_cache:
+                zone_distributions = dict(zip(list(zones.keys()), rng.dirichlet([self.inter_zone_alpha] * num_zones)))
+                zone_distribution_cache[clazz] = zone_distributions
+            else:
+                zone_distributions = zone_distribution_cache[clazz]
+                
             counts = {zone_id: int(zone_distributions[zone_id] * len(class_indices)) for zone_id in zones.keys()}
             while np.array(list(counts.values())).sum() < len(class_indices): counts[
                 max(zone_distributions, key=zone_distributions.get)] += 1
@@ -527,12 +514,34 @@ class FederatedDataset:
                 class_indices = zn_idxs[clazz]
                 rng.shuffle(class_indices)
 
-                device_distributions = device_distribution_cache[clazz]
+                # Check if clazz exists in device_distribution_cache, if not create it
+                if clazz not in device_distribution_cache:
+                    num_devices = len(device_list)
+                    if num_devices > 0:
+                        device_distributions = dict(zip(device_list, rng.dirichlet([self.intra_zone_alpha] * num_devices)))
+                    else:
+                        device_distributions = {}
+                    device_distribution_cache[clazz] = device_distributions
+                else:
+                    device_distributions = device_distribution_cache[clazz]
+                    # Ensure all devices in the current zone are in the distribution
+                    for device_id in device_list:
+                        if device_id not in device_distributions:
+                            # Add missing device with uniform distribution
+                            device_distributions[device_id] = 1.0 / len(device_list)
+                    # Renormalize if needed
+                    if device_distributions:
+                        total_weight = sum(device_distributions.values())
+                        if total_weight > 0:
+                            for device_id in device_distributions:
+                                device_distributions[device_id] /= total_weight
+                    
                 counts = {device_id: int(device_distributions[device_id] * len(class_indices)) for device_id in device_list}
-                while np.array(list(counts.values())).sum() < len(class_indices):
+                # Fix rounding errors safely
+                while np.array(list(counts.values())).sum() < len(class_indices) and device_list:
                     counts[max(counts.keys(), key=lambda d: device_distributions[d])] += 1
 
-                while np.array(list(counts.values())).sum() > len(class_indices):
+                while np.array(list(counts.values())).sum() > len(class_indices) and device_list:
                     counts[max(counts.keys(), key=lambda d: device_distributions[d])] -= 1
 
                 start = 0
@@ -545,9 +554,9 @@ class FederatedDataset:
             # Create subsets
 
             for device_id in device_list:
-                flattened_train_indices_per_device = [x for sublist in device_train_indices[device_id].values() for x in sublist]
+                flattened_train_indices_per_device = [x for sublist in device_train_indices[device_id].values() for x in sublist] if device_id in device_train_indices else []
                 flattened_test_indices_per_device = [x for sublist in device_test_indices[device_id].values() for x in
-                                                     sublist]
+                                                     sublist] if device_id in device_test_indices else []
                 train_subset = Subset(self.train_data, flattened_train_indices_per_device) if flattened_train_indices_per_device else None
                 test_subset = Subset(self.test_data, flattened_test_indices_per_device) if flattened_test_indices_per_device else None
                 device_datasets[device_id] = (train_subset, test_subset)

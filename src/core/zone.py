@@ -2,6 +2,7 @@
 Zone module for ContinuumFL framework.
 Implements spatial zones that aggregate edge devices with similar characteristics.
 """
+import os
 
 import numpy as np
 import torch
@@ -9,7 +10,33 @@ import torch.nn as nn
 from typing import Dict, List, Tuple, Optional, Any, Set
 from collections import defaultdict, deque
 import time
+
+from torch import Tensor
+
 from .device import EdgeDevice
+
+# ThreadFunc
+def run_training(args: dict[str, Any]):
+    device = args["device"]
+    global_model = args["model"]
+    epochs = args["epochs"]
+    learning_rate = args["learning_rate"]
+    comp_device = args["comp_device"]
+
+    # active device fails
+    if device.is_active and device.simulate_failure():
+        return None
+
+    # device active or failed device is repaired
+    if device.is_active or device.simulate_repair():
+        return device.local_train(
+            global_model,
+            epochs=epochs,
+            learning_rate=learning_rate,
+            device=comp_device), device.device_id
+
+    # device failed and was not repaired
+    return None
 
 class Zone:
     """
@@ -22,7 +49,7 @@ class Zone:
     - Zone-level objective F_k(w)
     """
     
-    def __init__(self, zone_id: str, edge_server_id: str):
+    def __init__(self, zone_id: str, edge_server_id: str, compression_rate: float):
         self.zone_id = zone_id
         self.edge_server_id = edge_server_id
         
@@ -64,7 +91,12 @@ class Zone:
         # Failure handling
         self.is_operational = True
         self.backup_aggregators: List[str] = []
+
+        self.compression_rate = compression_rate
         
+        # For memory pooling
+        self._tensor_cache = {}
+    
     def add_device(self, device: EdgeDevice):
         """Add a device to this zone"""
         self.devices[device.device_id] = device
@@ -98,7 +130,94 @@ class Zone:
         # Update resource capacity
         self.compute_capacity = sum(device.resources.compute_capacity for device in self.devices.values())
         self.memory_capacity = sum(device.resources.memory_capacity for device in self.devices.values())
-    
+
+    def _sample_participating_devices(self) -> List[str]:
+        """Sample devices for participation in current round"""
+        # Simple participation strategy: random sampling with availability check
+        available_devices = [
+            device_id for device_id, device in self.devices.items()
+            if device.is_active and device.local_dataset
+        ]
+
+        if available_devices:
+            # Sample fraction of available devices
+            participation_rate = 0.7  # 70% participation rate
+            num_participants = max(1, int(participation_rate * len(available_devices)))
+
+            participating = np.random.choice(
+                available_devices, size=num_participants, replace=False
+            ).tolist()
+
+            return participating
+
+        return []
+
+    def perform_local_training(self, args) -> tuple[str, dict[str, Tensor], dict[str, list[str] | int]]:
+        """Perform local training on participating devices"""
+
+        participating_devices = self._sample_participating_devices()
+        comp_device = args["comp_device"]
+        global_model = args["model"]
+        learning_rate = args["learning_rate"]
+        epochs = args["epochs"]
+        device_participation = args["device_participation"]
+        device_updates = {}
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        if comp_device == 'cuda':
+            max_workers = len(participating_devices)
+        else:
+            max_workers = min(len(participating_devices), os.cpu_count())
+
+        device_args = [
+            {"device": self.devices[device_id], "model": global_model, "epochs": epochs,
+             "learning_rate": learning_rate,
+             "comp_device": comp_device} for device_id in participating_devices]
+        with ThreadPoolExecutor(max_workers=max(1, max_workers)) as executor:
+            futures = [executor.submit(run_training, args) for args in device_args]
+
+            for f in as_completed(futures):
+                res = f.result()
+                if res is None:
+                    continue
+
+                res_dict, device_id = res
+                if res_dict["success"]:
+                    device_updates[device_id] = res_dict["gradient"]
+                    device_participation[device_id] += 1
+
+                    # Update device reliability based on participation
+                    self.devices[device_id].participation_history.append(1)
+        intra_start = time.time()
+        aggregated_weights = self.intra_zone_aggregation(device_updates)
+        intra_time = time.time() - intra_start
+
+        comm_cost = self.estimate_communication_cost(device_updates, {self.zone_id: aggregated_weights})
+        return self.zone_id, aggregated_weights, {"participating_devices": participating_devices,
+                                                  "num_device_updates": len(device_updates),
+                                                  "intra_time": intra_time,
+                                                  "communication_cost": comm_cost}
+
+    def estimate_communication_cost(self, device_updates: Dict[str, Dict[str, torch.Tensor]],
+                                    zone_weights: Dict[str, Dict[str, torch.Tensor]]) -> float:
+        """Estimate communication cost in MB for this round"""
+        total_cost = 0.0
+
+        # Device to zone communication (uplink)
+        for device_id, weights in device_updates.items():
+            device_size = sum(param.numel() * 4 for param in weights.values()) / (1024 * 1024)  # 4 bytes per float32
+            compressed_size = device_size * self.compression_rate  # Apply compression
+            total_cost += compressed_size
+
+        # Zone to cloud communication (inter-zone)
+        for zone_id, weights in zone_weights.items():
+            zone_size = sum(param.numel() * 4 for param in weights.values()) / (1024 * 1024)
+            # Apply delta encoding (assume 50% reduction)
+            delta_encoded_size = zone_size * 0.5
+            total_cost += delta_encoded_size * 2  # Bidirectional
+
+        return total_cost
+
     def compute_intra_zone_weights(self) -> Dict[str, float]:
         """
         Compute aggregation weights for devices within the zone.
@@ -149,7 +268,7 @@ class Zone:
         if not weights or not device_updates:
             return {}
         
-        # Initialize aggregated weights
+        # Initialize aggregated weights with memory pooling
         aggregated_weights = {}
         original_dtypes = {}  # Track original data types
         first_device_id = next(iter(device_updates.keys()))
@@ -159,11 +278,26 @@ class Zone:
             original_dtypes[param_name] = param_tensor.dtype
             # Ensure aggregated weights are float type for aggregation operations
             if param_tensor.dtype != torch.float32:
-                aggregated_weights[param_name] = torch.zeros_like(param_tensor, dtype=torch.float32)
+                # Use tensor cache to reduce allocations
+                cache_key = f"aggregated_{param_name}_{param_tensor.shape}"
+                if cache_key in self._tensor_cache:
+                    aggregated_weights[param_name] = self._tensor_cache[cache_key]
+                    aggregated_weights[param_name].zero_()
+                else:
+                    aggregated_tensor = torch.zeros_like(param_tensor, dtype=torch.float32)
+                    self._tensor_cache[cache_key] = aggregated_tensor
+                    aggregated_weights[param_name] = aggregated_tensor
             else:
-                aggregated_weights[param_name] = torch.zeros_like(param_tensor)
+                cache_key = f"aggregated_{param_name}_{param_tensor.shape}"
+                if cache_key in self._tensor_cache:
+                    aggregated_weights[param_name] = self._tensor_cache[cache_key]
+                    aggregated_weights[param_name].zero_()
+                else:
+                    aggregated_tensor = torch.zeros_like(param_tensor)
+                    self._tensor_cache[cache_key] = aggregated_tensor
+                    aggregated_weights[param_name] = aggregated_tensor
         
-        # Weighted aggregation
+        # Weighted aggregation with in-place operations
         total_weight = 0.0
         for device_id, device_weights in device_updates.items():
             if device_id in weights and weights[device_id] > 0:
@@ -172,20 +306,23 @@ class Zone:
                     # Ensure tensor is float for aggregation operations
                     if param_tensor.dtype != torch.float32:
                         param_tensor = param_tensor.float()
-                    aggregated_weights[param_name] += weight * param_tensor
+                    # Use in-place operations to reduce memory fragmentation
+                    aggregated_weights[param_name].add_(param_tensor, alpha=weight)
                 total_weight += weight
         
-        # Normalize if needed (should already be normalized from weight computation)
+        # Normalize if needed using in-place operations
         if total_weight > 0 and abs(total_weight - 1.0) > 1e-6:
             for param_name in aggregated_weights:
-                aggregated_weights[param_name] = aggregated_weights[param_name] / total_weight
+                aggregated_weights[param_name].div_(total_weight)
         
-        # Convert back to original data types
+        # Convert back to original data types with in-place operations where possible
         for param_name in aggregated_weights:
             if original_dtypes[param_name] != torch.float32:
-                aggregated_weights[param_name] = aggregated_weights[param_name].to(original_dtypes[param_name])
+                # For type conversion, we need to create a new tensor
+                converted_tensor = aggregated_weights[param_name].to(original_dtypes[param_name])
+                aggregated_weights[param_name] = converted_tensor
         
-        # Apply gradient compression (temporarily disabled) TODO Fix Compression and replace Weights by Delta-Weights
+        # Apply gradient compression (temporarily disabled)
         # compressed_weights = self._apply_gradient_compression(aggregated_weights)
         
         self.aggregated_weights = aggregated_weights # TODO use compressed weights
@@ -208,54 +345,22 @@ class Zone:
             # Get top-k elements by magnitude
             _, top_k_indices = torch.topk(torch.abs(flat_tensor), k)
             
-            # Create sparse tensor
-            sparse_tensor = torch.zeros_like(flat_tensor)
-            sparse_tensor[top_k_indices] = flat_tensor[top_k_indices]
+            # Create sparse tensor using in-place operations where possible
+            cache_key = f"sparse_{param_name}_{flat_tensor.shape}"
+            if cache_key in self._tensor_cache:
+                sparse_tensor = self._tensor_cache[cache_key]
+                sparse_tensor.zero_()
+            else:
+                sparse_tensor = torch.zeros_like(flat_tensor)
+                self._tensor_cache[cache_key] = sparse_tensor
+            
+            # Use in-place scatter operation
+            sparse_tensor.scatter_(0, top_k_indices, flat_tensor[top_k_indices])
             
             compressed_weights[param_name] = sparse_tensor.reshape(param_tensor.shape)
         
         return compressed_weights
-    
-    def compute_zone_contribution_score(self) -> float:
-        """
-        Compute zone contribution score for inter-zone aggregation.
-        
-        Implements Equation (14):
-        Score_k = |D_k| * n̄_k * exp(-Var({∇F_i})) * (1 - L_k^val)
-        """
-        if not self.devices:
-            return 0.0
-        
-        # Data contribution component
-        num_devices = len([d for d in self.devices.values() if d.is_active])
-        avg_dataset_size = self.total_dataset_size / max(num_devices, 1)
-        data_contribution = num_devices * avg_dataset_size
-        print(f"({self.zone_id}) Num Devices {num_devices}, avg dataset size {avg_dataset_size:.2f}")
-        # Gradient consistency component
-        gradient_variances = []
-        for device in self.devices.values():
-            if device.is_active and device.gradient_history:
-                grad_dict = device.gradient_history[-1]
-                grad_vector = torch.cat([v.flatten() for v in grad_dict.values()])
-                grad_norm = torch.norm(grad_vector).item()
-                gradient_variances.append(grad_norm)
-        
-        if gradient_variances:
-            gradient_variance = np.var(gradient_variances)
-            consistency_score = np.exp(-gradient_variance)
-        else:
-            consistency_score = 1.0
-        
-        # Validation accuracy component (placeholder)
-        # In practice, this would be computed on a validation set
-        validation_accuracy = 0.8 + 0.1 * np.random.random()  # Placeholder
-        accuracy_component = validation_accuracy
-        
-        score = data_contribution * consistency_score * accuracy_component
-        self.contribution_score = score
-        
-        return score
-    
+
     def compute_spatial_correlation(self, other_zone: 'Zone') -> float:
         """
         Compute spatial correlation with another zone.
@@ -266,6 +371,36 @@ class Zone:
         if not self.devices or not other_zone.devices:
             return 0.0
         
+        # Use GPU acceleration if available
+        use_gpu = torch.cuda.is_available()
+        
+        if use_gpu:
+            try:
+                # Convert locations to GPU tensors for parallel computation
+                locations_i = torch.tensor([[d.location[0], d.location[1]] for d in self.devices.values()], 
+                                         dtype=torch.float32, device='cuda')
+                locations_j = torch.tensor([[d.location[0], d.location[1]] for d in other_zone.devices.values()], 
+                                         dtype=torch.float32, device='cuda')
+                
+                # Compute pairwise distances in parallel
+                diff = locations_i.unsqueeze(1) - locations_j.unsqueeze(0)
+                distances = torch.norm(diff, dim=2)
+                total_distance = torch.sum(distances).cpu().item()
+                count = distances.numel()
+                
+                if count == 0:
+                    return 0.0
+                
+                avg_distance = total_distance / count
+                sigma = 10.0  # Distance scaling parameter
+                
+                correlation = np.exp(-avg_distance / sigma)
+                return correlation
+            except Exception:
+                # Fallback to CPU computation if GPU fails
+                pass
+        
+        # Fallback to CPU computation
         total_distance = 0.0
         count = 0
         
@@ -336,6 +471,61 @@ class Zone:
             self.allocated_bandwidth = 0.0
         
         return self.allocated_bandwidth
+    
+    def compute_zone_contribution_score(self) -> float:
+        """
+        Compute zone contribution score for aggregation weighting.
+        
+        Implements Equation (14):
+        Score_k = |D_k|·n̄_k · exp(-Var({∇F_i})) · (1 - L_k^val)
+        """
+        if not self.devices:
+            return 0.0
+        
+        #|D_k| - number of devices in zone
+        num_devices = len(self.devices)
+        
+        # n̄_k - average dataset size per device
+        avg_dataset_size = self.total_dataset_size / max(num_devices, 1)
+        
+        # exp(-Var({∇F_i})) - gradient consistency (inverse of variance)
+        if len(self.devices) > 1:
+            # Compute gradient variance across devices
+            gradients = []
+            for device in self.devices.values():
+                if device.gradient_history:
+                    gradients.append(device.gradient_history[-1])  # Most recent gradient
+            
+            if len(gradients) > 1:
+                # Compute variance of gradients
+                gradient_var = 0.0
+                for param_name in gradients[0].keys():
+                    param_gradients = [g[param_name] for g in gradients if param_name in g]
+                    if param_gradients:
+                        #Flatten all gradients for this parameter
+                        flat_gradients = [g.flatten() for g in param_gradients]
+                        # Compute variance across devices for this parameter
+                        stacked = torch.stack(flat_gradients)
+                        param_var = torch.var(stacked, dim=0).mean().item()
+                        gradient_var += param_var
+                
+                gradient_consistency = np.exp(-gradient_var)
+            else:
+                gradient_consistency = 1.0
+        else:
+            gradient_consistency = 1.0
+        
+        # (1 - L_k^val) - validation accuracy factor (simplified as 1.0 for now)
+        validation_factor = 1.0
+        
+        # Compute final score with smoothing to prevent extreme variations
+        score = num_devices * avg_dataset_size * gradient_consistency * validation_factor
+        
+        # Apply smoothing to prevent extreme score variations
+        smoothing_factor = 0.1
+        self.contribution_score = (1 - smoothing_factor) * self.contribution_score + smoothing_factor * score if hasattr(self, 'contribution_score') else score
+        
+        return self.contribution_score
     
     def handle_device_failure(self, failed_device_id: str):
         """Handle failure of a device in the zone"""

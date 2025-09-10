@@ -1,5 +1,8 @@
 # ContinuumFL Framework Requirements
 
+# Hugginface Datasets
+datasets
+
 # Core ML frameworks
 torch
 torchvision

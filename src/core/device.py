@@ -2,6 +2,7 @@
 Core device module for ContinuumFL framework.
 Implements edge devices with spatial coordinates, resource constraints, and FL capabilities.
 """
+import gc
 
 import numpy as np
 import torch
@@ -14,6 +15,7 @@ from collections import deque
 
 from matplotlib import pyplot as plt
 
+from src.memory_log.memory_log import log_mem
 from src.models.model_factory import ShakespeareLSTM
 
 
@@ -23,7 +25,48 @@ class DeviceResources:
     compute_capacity: float  # GFLOPS
     memory_capacity: float   # GB
     bandwidth: float         # Mbps
+
+class TensorPool:
+    """Simple tensor memory pool to reduce allocations"""
+    def __init__(self):
+        self.pool = {}  # {(shape, dtype, device): [available_tensors]}
+        self.used = set()  # Set of currently used tensors
+        self.max_pool_size = 100  # Maximum number of tensors to keep in pool per shape
     
+    def get_tensor(self, shape, dtype=torch.float32, device='cpu'):
+        """Get a tensor from the pool or create a new one"""
+        key = (shape, dtype, device)
+        if key in self.pool and self.pool[key]:
+            # Reuse existing tensor from pool
+            tensor = self.pool[key].pop()
+            tensor.zero_()  # Reset tensor values
+            self.used.add(tensor)
+            return tensor
+        else:
+            # Create new tensor
+            tensor = torch.zeros(shape, dtype=dtype, device=device)
+            self.used.add(tensor)
+            return tensor
+    
+    def return_tensor(self, tensor):
+        """Return a tensor to the pool for reuse"""
+        if tensor in self.used:
+            self.used.discard(tensor)
+            key = (tensor.shape, tensor.dtype, tensor.device)
+            if key not in self.pool:
+                self.pool[key] = []
+            # Only keep a limited number of tensors in pool to prevent memory bloat
+            if len(self.pool[key]) < self.max_pool_size:
+                self.pool[key].append(tensor)
+    
+    def clear(self):
+        """Clear all tensors from the pool"""
+        self.pool.clear()
+        self.used.clear()
+
+# Global tensor pool instance
+_global_tensor_pool = TensorPool()
+
 class EdgeDevice:
     """
     Represents an edge device in the ContinuumFL framework.
@@ -50,7 +93,7 @@ class EdgeDevice:
         
         # Performance tracking
         self.participation_history = deque(maxlen=100)  # Track last 100 rounds
-        self.gradient_history = deque(maxlen=10)        # Store recent gradients
+        self.gradient_history = deque(maxlen=5)        # Store recent gradients
         self.training_times = deque(maxlen=50)          # Training time history
         
         # Quality metrics
@@ -68,6 +111,9 @@ class EdgeDevice:
         self.privacy_budget = 1.0
         self.noise_multiplier = 0.0
         
+        # Tensor pool for this device
+        self.tensor_pool = _global_tensor_pool
+    
     def set_local_dataset(self, dataset: torch.utils.data.Dataset, 
                          batch_size: int = 32, num_workers: int = 0):
         """Set local dataset and create dataloader"""
@@ -91,12 +137,12 @@ class EdgeDevice:
         """
         if self.local_dataloader is None or not self.is_active:
             return {"success": False, "reason": "No dataset or inactive device"}
-        
+
         start_time = time.time()
         
         # Initialize local model with global weights
         self.local_model.load_state_dict(global_model.state_dict())
-        
+
         # Move model to appropriate device
         if device == 'cuda' and torch.cuda.is_available():
             self.local_model = self.local_model.cuda()
@@ -105,11 +151,8 @@ class EdgeDevice:
             device = 'cpu'  # Ensure consistency
         
         self.local_model.train()
-        
-        # Setup optimizer
-        #optimizer = torch.optim.SGD(self.local_model.parameters(),
-                                  #lr=learning_rate, momentum=0.9, weight_decay=1e-4)
-        optimizer = torch.optim.Adam(self.local_model.parameters(), lr=0.001)
+        # Setup optimizer with the provided learning rate
+        optimizer = torch.optim.Adam(self.local_model.parameters(), lr=learning_rate)
         criterion = nn.CrossEntropyLoss()
         
         # Move criterion to same device
@@ -117,8 +160,8 @@ class EdgeDevice:
             criterion = criterion.cuda()
         
         total_loss = 0.0
+        total_correct = 0
         num_batches = 0
-        
         # Local training loop
         for epoch in range(epochs):
             for batch_idx, (data, target) in enumerate(self.local_dataloader):
@@ -134,23 +177,25 @@ class EdgeDevice:
                     output = self.local_model(data)
                 predictions = torch.argmax(output, dim=1)
                 correct = (predictions == target).float().sum()
+                total_correct += correct.detach().cpu().numpy()
                 loss = criterion(output, target)
                 loss.backward()
                 optimizer.step()
 
-                total_loss += loss.item()
+                total_loss += loss.detach().item()
                 num_batches += 1
 
-                if batch_idx % 20 == 0:
-                    print(f'({self.device_id}) Loss: {loss:.3f}, Accuracy {(correct / len(target)) * 100:.2f}%')
-        
+        if device == 'cuda':
+            torch.cuda.empty_cache()
+        gc.collect()
+
         training_time = time.time() - start_time
         self.training_times.append(training_time)
         
         # Calculate gradient for similarity computation (move to CPU for storage)
         local_gradient = self._compute_model_gradient(global_model, device)
         self.gradient_history.append(local_gradient)
-        
+
         # Update participation history
         self.participation_history.append(1)  # Participated in this round
         
@@ -163,7 +208,7 @@ class EdgeDevice:
             self.local_model = self.local_model.cpu()
 
         training_loss = total_loss / max(num_batches, 1)
-        print(f"Training Loss. {training_loss:.3f}")
+        # print(f"({self.device_id}) Training finished. Loss: {training_loss:.3f}, Accuracy: {total_correct*100.0 / (self.dataset_size * epochs):.3f}%")
         return {
             "success": True,
             "model_weights": self.local_model.state_dict(),
@@ -179,7 +224,21 @@ class EdgeDevice:
         delta_weights = {}
         for (name, local_param), (_, global_param) in zip(self.local_model.state_dict().items(),
                                                           global_model.state_dict().items()):
-            delta_weights[name] = (local_param - global_param).float()
+            # Use in-place operations to reduce memory fragmentation
+            local_cpu = local_param.detach().cpu()
+            global_cpu = global_param.detach().cpu()
+            
+            # Try to reuse tensors from pool when possible
+            if name in self.tensor_pool.pool:
+                # Reuse existing tensor if available
+                delta_tensor = self.tensor_pool.get_tensor(local_cpu.shape, local_cpu.dtype, 'cpu')
+                torch.sub(local_cpu, global_cpu, out=delta_tensor)
+                delta_weights[name] = delta_tensor.float()
+            else:
+                # Create new tensor with in-place operations where possible
+                delta_tensor = self.tensor_pool.get_tensor(local_cpu.shape, local_cpu.dtype, 'cpu')
+                torch.sub(local_cpu, global_cpu, out=delta_tensor)
+                delta_weights[name] = delta_tensor.float()
         return delta_weights
     
     def compute_gradient_similarity(self, other_device: 'EdgeDevice') -> float:
@@ -190,14 +249,36 @@ class EdgeDevice:
         """
         if len(self.gradient_history) == 0 or len(other_device.gradient_history) == 0:
             return 0.0
-        
+
+        def flatten_grads(grad):
+            # Use tensor pool for flattened gradients
+            flat_shape = sum(g.numel() for g in grad.values())
+            flat_tensor = self.tensor_pool.get_tensor((flat_shape,), dtype=torch.float32, device='cpu')
+            
+            idx = 0
+            for g in grad.values():
+                flat_g = g.view(-1)
+                # Use in-place copy to reduce memory fragmentation
+                flat_tensor[idx:idx + flat_g.numel()].copy_(flat_g)
+                idx += flat_g.numel()
+            
+            return flat_tensor[:idx]
+
         grad_i = self.gradient_history[-1]  # Most recent gradient
         grad_j = other_device.gradient_history[-1]
         
-        # Cosine similarity
-        dot_product = torch.dot(grad_i.flatten(), grad_j.flatten())
-        norm_i = torch.norm(grad_i.flatten())
-        norm_j = torch.norm(grad_j.flatten())
+        # Use tensor pool for computations
+        flat_grad_i = flatten_grads(grad_i)
+        flat_grad_j = flatten_grads(grad_j)
+        
+        # Cosine similarity with in-place operations
+        dot_product = torch.dot(flat_grad_i, flat_grad_j)
+        norm_i = torch.norm(flat_grad_i)
+        norm_j = torch.norm(flat_grad_j)
+        
+        # Return tensors to pool
+        self.tensor_pool.return_tensor(flat_grad_i)
+        self.tensor_pool.return_tensor(flat_grad_j)
         
         if norm_i == 0 or norm_j == 0:
             return 0.0
@@ -268,34 +349,57 @@ class EdgeDevice:
         k = int(compression_rate * len(flat_grad))
         
         if k == 0:
-            return torch.zeros_like(gradient), gradient
+            # Use tensor pool for zero tensor
+            zero_tensor = self.tensor_pool.get_tensor(gradient.shape, gradient.dtype, gradient.device)
+            zero_tensor.zero_()
+            return zero_tensor, gradient
         
         # Get top-k indices
         _, top_k_indices = torch.topk(torch.abs(flat_grad), k)
         
-        # Create sparse gradient
-        sparse_grad = torch.zeros_like(flat_grad)
-        sparse_grad[top_k_indices] = flat_grad[top_k_indices]
+        # Create sparse gradient using tensor pool
+        sparse_grad = self.tensor_pool.get_tensor(flat_grad.shape, flat_grad.dtype, flat_grad.device)
+        sparse_grad.zero_()
+        sparse_grad.scatter_(0, top_k_indices, flat_grad[top_k_indices])
         
-        # Error feedback buffer
-        error_feedback = flat_grad - sparse_grad
+        # Error feedback buffer with in-place operations
+        error_feedback = self.tensor_pool.get_tensor(flat_grad.shape, flat_grad.dtype, flat_grad.device)
+        torch.sub(flat_grad, sparse_grad, out=error_feedback)
+        
         if self.error_feedback_buffer is None:
-            self.error_feedback_buffer = torch.zeros_like(flat_grad)
+            self.error_feedback_buffer = self.tensor_pool.get_tensor(flat_grad.shape, flat_grad.dtype, flat_grad.device)
+            self.error_feedback_buffer.zero_()
         
-        # Add previous error
-        sparse_grad += self.error_feedback_buffer
-        self.error_feedback_buffer = error_feedback
+        # Add previous error in-place
+        sparse_grad.add_(self.error_feedback_buffer)
+        self.error_feedback_buffer.copy_(error_feedback)
         
-        return sparse_grad.reshape(gradient.shape), error_feedback.reshape(gradient.shape)
-    
+        # Reshape and return tensors from pool
+        sparse_result = sparse_grad.reshape(gradient.shape)
+        error_result = error_feedback.reshape(gradient.shape)
+        
+        return sparse_result, error_result
+
     def simulate_failure(self, failure_probability: float = 0.05):
         """Simulate device failure or unavailability"""
         if np.random.random() < failure_probability:
             self.is_active = False
-            self.participation_history.append(0)  # Did not participate
+            self.participation_history.append(0)
         else:
             self.is_active = True
-    
+    def simulate_repair(self, repair_probability: float = 0.2):
+        """Simulate device repair to avoid complete outage"""
+        if self.is_active:
+            self.participation_history.append(1)
+            return True
+        elif np.random.random() < repair_probability:
+            self.is_active = True
+            self.participation_history.append(1)
+            return True
+        else:
+            self.is_active = False
+            return False
+
     def get_device_info(self) -> Dict[str, Any]:
         """Get comprehensive device information"""
         return {

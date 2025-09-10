@@ -1,0 +1,81 @@
+{
+  "system_configuration": {
+    "num_devices": 100,
+    "num_zones": 15,
+    "num_rounds": 10,
+    "dataset": "shakespeare"
+  },
+  "final_performance": {
+    "continuum_fl": {
+      "accuracy": 0.01808144651572126,
+      "loss": 28.01678119474055,
+      "total_communication_cost": 809.5219573974609
+    }
+  },
+  "aggregation_statistics": {
+    "total_rounds": 10,
+    "zone_participation_rates": {
+      "zone_0": 1.0,
+      "zone_1": 1.0,
+      "zone_2": 1.0,
+      "zone_3": 1.0,
+      "zone_4": 1.0,
+      "zone_5": 1.0,
+      "zone_6": 1.0,
+      "zone_7": 1.0,
+      "zone_8": 1.0,
+      "zone_9": 1.0,
+      "zone_10": 1.0,
+      "zone_11": 1.0,
+      "zone_12": 1.0,
+      "zone_13": 1.0,
+      "zone_14": 1.0
+    },
+    "average_communication_cost_mb": 80.95219573974609,
+    "spatial_correlations": {
+      "average": 0.5569574833083728,
+      "maximum": 0.6513215598999998,
+      "total_pairs": 120
+    },
+    "staleness_distribution": {
+      "zone_0": 0,
+      "zone_1": 1,
+      "zone_2": 2,
+      "zone_3": 2,
+      "zone_4": 1,
+      "zone_5": 1,
+      "zone_6": 2,
+      "zone_7": 2,
+      "zone_8": 2,
+      "zone_9": 2,
+      "zone_10": 1,
+      "zone_11": 1,
+      "zone_12": 1,
+      "zone_13": 2,
+      "zone_14": 1
+    },
+    "current_zone_weights": {
+      "zone_0": 0.07431730274723587,
+      "zone_1": 0.0587413367685757,
+      "zone_2": 0.06886896098794457,
+      "zone_3": 0.07288424462573145,
+      "zone_4": 0.0748931315890316,
+      "zone_5": 0.06900201069761763,
+      "zone_6": 0.0785711771216857,
+      "zone_7": 0.07611594913183811,
+      "zone_8": 0.05386803384942574,
+      "zone_9": 0.07979171159503687,
+      "zone_10": 0.06011380362335203,
+      "zone_11": 0.06631790329514838,
+      "zone_12": 0.04456508839919784,
+      "zone_13": 0.0683831583975553,
+      "zone_14": 0.053566187170623066
+    }
+  },
+  "zone_discovery_statistics": {
+    "rounds_completed": 1,
+    "average_stability": 1.0,
+    "total_migrations": 0,
+    "migration_history_size": 0
+  }
+}

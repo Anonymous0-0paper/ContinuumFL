@@ -507,7 +507,7 @@ class BaselineFLMethods:
                         output = output[0]
                     
                     loss = criterion(output, target)
-                    total_loss += loss.item()
+                    total_loss += loss.detach().item()
                     
                     pred = output.argmax(dim=1, keepdim=True)
                     correct += pred.eq(target.view_as(pred)).sum().item()

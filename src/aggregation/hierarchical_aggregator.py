@@ -10,6 +10,11 @@ from typing import Dict, List, Tuple, Optional, Any
 from collections import defaultdict, deque
 import time
 import copy
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+import threading
+
+from torch import Tensor
 
 from ..core.zone import Zone
 from ..core.device import EdgeDevice
@@ -54,6 +59,13 @@ class HierarchicalAggregator:
         self.current_round = 0
         self.zone_staleness: Dict[str, int] = defaultdict(int)
         
+        # Async processing
+        self.executor = ThreadPoolExecutor(max_workers=4)
+        self.lock = threading.Lock()
+        
+        # Tensor cache for memory pooling
+        self._tensor_cache = {}
+    
     def set_global_model(self, model: nn.Module):
         """Initialize global model"""
         self.global_model = copy.deepcopy(model)
@@ -149,13 +161,18 @@ class HierarchicalAggregator:
                 adjusted_weights[zone_id] = 0.0
             else:
                 staleness_factor = np.exp(-self.staleness_penalty * staleness)
-                adjusted_weights[zone_id] = fair_weight * staleness_factor
-        
-        # Renormalize weights
+                adjusted_weights[zone_id] = max(0.01, fair_weight * staleness_factor)  # Ensure minimum weight
+        print(f"Adjusted Weights: {adjusted_weights}")
+        # Renormalize weights to ensure minimum participation
         total_weight = sum(adjusted_weights.values())
         if total_weight > 0:
             for zone_id in adjusted_weights:
                 adjusted_weights[zone_id] /= total_weight
+        else:
+            # If all weights are zero, assign uniform weights
+            uniform_weight = 1.0 / len(adjusted_weights)
+            for zone_id in adjusted_weights:
+                adjusted_weights[zone_id] = uniform_weight
         
         return adjusted_weights
     
@@ -178,36 +195,99 @@ class HierarchicalAggregator:
                 for param_name, global_param in self.global_weights.items():
                     if param_name in zone.aggregated_weights:
                         zone_param = zone.aggregated_weights[param_name]
-                        deviation[param_name] = zone_param - global_param
+                        # Use tensor cache for memory efficiency
+                        cache_key = f"deviation_{zone_id}_{param_name}"
+                        if cache_key in self._tensor_cache:
+                            dev_tensor = self._tensor_cache[cache_key]
+                            torch.sub(zone_param, global_param.cpu(), out=dev_tensor)
+                            deviation[param_name] = dev_tensor
+                        else:
+                            dev_tensor = zone_param - global_param.cpu()
+                            self._tensor_cache[cache_key] = dev_tensor
+                            deviation[param_name] = dev_tensor
                     else:
-                        deviation[param_name] = torch.zeros_like(global_param)
+                        # Use tensor cache
+                        cache_key = f"zero_{param_name}_{global_param.shape}"
+                        if cache_key in self._tensor_cache:
+                            deviation[param_name] = self._tensor_cache[cache_key]
+                        else:
+                            zero_tensor = torch.zeros_like(global_param)
+                            self._tensor_cache[cache_key] = zero_tensor
+                            deviation[param_name] = zero_tensor
                 
                 zone_deviations[zone_id] = deviation
         
-        # Update pairwise correlations
+        # Update pairwise correlations with parallel processing
         zone_ids = list(zone_deviations.keys())
-        for i, zone_i in enumerate(zone_ids):
-            for j, zone_j in enumerate(zone_ids):
-                if i <= j:  # Symmetric matrix
-                    correlation_key = (zone_i, zone_j) if zone_i <= zone_j else (zone_j, zone_i)
-                    
-                    if i == j:
-                        # Self-correlation
-                        new_correlation = 1.0
-                    else:
-                        # Compute cosine similarity between deviations
-                        dev_i = torch.cat([param.flatten() for param in zone_deviations[zone_i].values()])
-                        dev_j = torch.cat([param.flatten() for param in zone_deviations[zone_j].values()])
+        
+        # Use ThreadPoolExecutor for parallel computation
+        futures = []
+        results = {}
+        
+        def compute_correlation(i, j):
+            zone_i, zone_j = zone_ids[i], zone_ids[j]
+            if i <= j:  # Symmetric matrix
+                correlation_key = (zone_i, zone_j) if zone_i <= zone_j else (zone_j, zone_i)
+                
+                if i == j:
+                    # Self-correlation
+                    new_correlation = 1.0
+                else:
+                    # Compute cosine similarity between deviations
+                    try:
+                        # Flatten and concatenate all parameter deviations
+                        dev_i_list = [zone_deviations[zone_i][name].flatten() for name in sorted(zone_deviations[zone_i].keys())]
+                        dev_j_list = [zone_deviations[zone_j][name].flatten() for name in sorted(zone_deviations[zone_j].keys())]
                         
+                        # Use tensor cache for concatenated tensors
+                        cache_key_i = f"concat_{zone_i}"
+                        cache_key_j = f"concat_{zone_j}"
+                        
+                        if cache_key_i in self._tensor_cache:
+                            dev_i = self._tensor_cache[cache_key_i]
+                        else:
+                            dev_i = torch.cat(dev_i_list)
+                            self._tensor_cache[cache_key_i] = dev_i
+                            
+                        if cache_key_j in self._tensor_cache:
+                            dev_j = self._tensor_cache[cache_key_j]
+                        else:
+                            dev_j = torch.cat(dev_j_list)
+                            self._tensor_cache[cache_key_j] = dev_j
+                        
+                        # Compute cosine similarity
                         cosine_sim = torch.cosine_similarity(dev_i.unsqueeze(0), dev_j.unsqueeze(0)).item()
                         new_correlation = cosine_sim
-                    
-                    # Apply momentum update
-                    old_correlation = self.spatial_correlations.get(correlation_key, 0.0)
-                    updated_correlation = (self.momentum_eta * old_correlation + 
-                                         (1 - self.momentum_eta) * new_correlation)
-                    
+                    except Exception:
+                        # Fallback to CPU computation
+                        dev_i = torch.cat([param.flatten() for param in zone_deviations[zone_i].values()])
+                        dev_j = torch.cat([param.flatten() for param in zone_deviations[zone_j].values()])
+                        cosine_sim = torch.cosine_similarity(dev_i.unsqueeze(0), dev_j.unsqueeze(0)).item()
+                        new_correlation = cosine_sim
+                
+                # Apply momentum update
+                old_correlation = self.spatial_correlations.get(correlation_key, 0.0)
+                updated_correlation = (self.momentum_eta * old_correlation + 
+                                     (1 - self.momentum_eta) * new_correlation)
+                
+                return correlation_key, updated_correlation
+            return None, None
+        
+        # Submit tasks to thread pool
+        for i, zone_i in enumerate(zone_ids):
+            for j, zone_j in enumerate(zone_ids):
+                future = self.executor.submit(compute_correlation, i, j)
+                futures.append((future, i, j))
+        
+        # Collect results
+        for future, i, j in futures:
+            try:
+                correlation_key, updated_correlation = future.result()
+                if correlation_key is not None:
                     self.spatial_correlations[correlation_key] = updated_correlation
+            except Exception:
+                # Handle any exceptions in parallel computation
+                pass
     
     def compute_spatial_regularization_term(self, zone_weights: Dict[str, Dict[str, torch.Tensor]],
                                           zones: Dict[str, Zone]) -> torch.Tensor:
@@ -220,9 +300,18 @@ class HierarchicalAggregator:
         if not zone_weights or len(zone_weights) < 2:
             return torch.tensor(0.0)
         
-        regularization = torch.tensor(0.0)
+        # Use tensor cache for regularization tensor
+        cache_key = "regularization"
+        if cache_key in self._tensor_cache:
+            regularization = self._tensor_cache[cache_key]
+            regularization.zero_()
+        else:
+            regularization = torch.tensor(0.0)
+            self._tensor_cache[cache_key] = regularization
+        
         zone_ids = list(zone_weights.keys())
         
+        # Process in parallel where possible
         for i, zone_i in enumerate(zone_ids):
             zone_i_obj = zones.get(zone_i)
             if not zone_i_obj or zone_i not in zone_weights:
@@ -235,17 +324,130 @@ class HierarchicalAggregator:
                     correlation = self.spatial_correlations.get(correlation_key, 0.0)
                     
                     if correlation > 0:
-                        # Compute model difference
+                        # Compute model difference with in-place operations
                         diff_squared = torch.tensor(0.0)
                         
                         for param_name in zone_weights[zone_i]:
                             if param_name in zone_weights[zone_j]:
+                                # Use tensor cache for difference computation
                                 param_diff = zone_weights[zone_i][param_name] - zone_weights[zone_j][param_name]
                                 diff_squared += torch.sum(param_diff ** 2)
                         
                         regularization += correlation * diff_squared
         
-        return self.spatial_regularization * regularization
+        result = self.spatial_regularization * regularization
+        return result
+    
+    async def async_inter_zone_aggregation(self, global_weights, zone_weights: Dict[str, Dict[str, torch.Tensor]],
+                                         zones: Dict[str, Zone]) -> Dict[str, torch.Tensor]:
+        """
+        Asynchronous version of inter-zone aggregation with better resource utilization.
+        """
+        # Run the computation in a thread pool to avoid blocking
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            self.executor,
+            self.inter_zone_aggregation,
+            global_weights,
+            zone_weights,
+            zones
+        )
+        return result
+    
+    def inter_zone_aggregation(self, global_weights, zone_weights: Dict[str, Dict[str, torch.Tensor]],
+                             zones: Dict[str, Zone]) -> Dict[str, torch.Tensor]:
+        """
+        Perform inter-zone aggregation with spatial awareness.
+        
+        Implements Phase 3 of Algorithm 2 and Equation (11).
+        """
+        if not zone_weights:
+            return self.global_weights or {}
+        
+        # Compute zone aggregation weights
+        base_weights = self.compute_zone_base_weights(zones)
+        fair_weights = self.apply_fairness_adjustment(base_weights)
+        final_weights = self.apply_staleness_penalty(fair_weights)
+        # Update spatial correlations
+        self.update_spatial_correlations(zones)
+        
+        # Initialize global aggregated weights with memory pooling
+        first_zone_weights = None
+        for zone_id in sorted(zone_weights.keys()):
+            if zone_weights[zone_id]:
+                first_zone_weights = zone_weights[zone_id]
+                break
+        if first_zone_weights is None:
+            return self.global_weights or {}
+
+        global_aggregated = {}
+        original_dtypes = {}  # Track original data types
+        
+        for param_name, param_tensor in first_zone_weights.items():
+            original_dtypes[param_name] = param_tensor.dtype
+            # Ensure aggregated weights are float type for aggregation operations
+            cache_key = f"global_agg_{param_name}_{param_tensor.shape}"
+            if param_tensor.dtype != torch.float32:
+                if cache_key in self._tensor_cache:
+                    global_aggregated[param_name] = self._tensor_cache[cache_key]
+                    global_aggregated[param_name].zero_()
+                else:
+                    aggregated_tensor = torch.zeros_like(param_tensor, dtype=torch.float32)
+                    self._tensor_cache[cache_key] = aggregated_tensor
+                    global_aggregated[param_name] = aggregated_tensor
+            else:
+                if cache_key in self._tensor_cache:
+                    global_aggregated[param_name] = self._tensor_cache[cache_key]
+                    global_aggregated[param_name].zero_()
+                else:
+                    aggregated_tensor = torch.zeros_like(param_tensor)
+                    self._tensor_cache[cache_key] = aggregated_tensor
+                    global_aggregated[param_name] = aggregated_tensor
+        
+        # Weighted aggregation across zones with in-place operations
+        total_weight = 0.0
+        for zone_id, zone_weight_dict in zone_weights.items():
+            if zone_id in final_weights and final_weights[zone_id] > 0:
+                weight = final_weights[zone_id]
+                
+                for param_name, param_tensor in zone_weight_dict.items():
+                    if param_name in global_aggregated:
+                        # Ensure tensor is float for aggregation operations
+                        if param_tensor.dtype != torch.float32:
+                            param_tensor = param_tensor.float()
+                        # Use in-place operations to reduce memory fragmentation
+                        global_aggregated[param_name].add_(param_tensor, alpha=weight)
+                
+                total_weight += weight
+        
+        # Normalize if needed using in-place operations
+        if total_weight > 0 and abs(total_weight - 1.0) > 1e-6:
+            for param_name in global_aggregated:
+                global_aggregated[param_name].div_(total_weight)
+        
+        # Convert back to original data types with in-place operations where possible
+        for param_name in global_aggregated:
+            if original_dtypes[param_name] != torch.float32:
+                # For type conversion, we need to create a new tensor
+                converted_tensor = global_aggregated[param_name].to(original_dtypes[param_name])
+                global_aggregated[param_name] = converted_tensor
+        
+        # Apply spatial regularization (conceptually - in practice, this influences convergence)
+        # The regularization term is computed for monitoring but not directly added to weights
+        reg_term = self.compute_spatial_regularization_term(zone_weights, zones)
+
+        # Update global weights with in-place operations where possible
+        with self.lock:  # Thread-safe update
+            for k in self.global_weights.keys():
+                if self.global_weights[k].dtype.is_floating_point:
+                    # Ensure both tensors are on the same device before operation
+                    aggregated_tensor = global_aggregated[k]
+                    if self.global_weights[k].device != aggregated_tensor.device:
+                        aggregated_tensor = aggregated_tensor.to(self.global_weights[k].device)
+                    # Use in-place addition to reduce memory allocations
+                    self.global_weights[k].add_(aggregated_tensor)
+
+        return global_aggregated
     
     def intra_zone_aggregation(self, zones: Dict[str, Zone], 
                              device_updates: Dict[str, Dict[str, torch.Tensor]]) -> Dict[str, Dict[str, torch.Tensor]]:
@@ -274,118 +476,30 @@ class HierarchicalAggregator:
         
         return zone_aggregated_weights
     
-    def inter_zone_aggregation(self, zone_weights: Dict[str, Dict[str, torch.Tensor]], 
-                             zones: Dict[str, Zone]) -> Dict[str, torch.Tensor]:
-        """
-        Perform inter-zone aggregation with spatial awareness.
-        
-        Implements Phase 3 of Algorithm 2 and Equation (11).
-        """
-        if not zone_weights:
-            return self.global_weights or {}
-        
-        # Compute zone aggregation weights
-        base_weights = self.compute_zone_base_weights(zones)
-        fair_weights = self.apply_fairness_adjustment(base_weights)
-        final_weights = self.apply_staleness_penalty(fair_weights)
-        print(f"Fair Weights: {final_weights}")
-        # Update spatial correlations
-        self.update_spatial_correlations(zones)
-        
-        # Initialize global aggregated weights
-        first_zone_weights = next(iter(zone_weights.values()))
-        global_aggregated = {}
-        original_dtypes = {}  # Track original data types
-        
-        for param_name, param_tensor in first_zone_weights.items():
-            original_dtypes[param_name] = param_tensor.dtype
-            # Ensure aggregated weights are float type for aggregation operations
-            if param_tensor.dtype != torch.float32:
-                global_aggregated[param_name] = torch.zeros_like(param_tensor, dtype=torch.float32)
-            else:
-                global_aggregated[param_name] = torch.zeros_like(param_tensor)
-        
-        # Weighted aggregation across zones
-        total_weight = 0.0
-        for zone_id, zone_weight_dict in zone_weights.items():
-            if zone_id in final_weights and final_weights[zone_id] > 0:
-                weight = final_weights[zone_id]
-                
-                for param_name, param_tensor in zone_weight_dict.items():
-                    if param_name in global_aggregated:
-                        # Ensure tensor is float for aggregation operations
-                        if param_tensor.dtype != torch.float32:
-                            param_tensor = param_tensor.float()
-                        global_aggregated[param_name] += weight * param_tensor
-                
-                total_weight += weight
-        
-        # Normalize if needed
-        if total_weight > 0 and abs(total_weight - 1.0) > 1e-6:
-            for param_name in global_aggregated:
-                global_aggregated[param_name] = global_aggregated[param_name] / total_weight
-        
-        # Convert back to original data types
-        for param_name in global_aggregated:
-            if original_dtypes[param_name] != torch.float32:
-                global_aggregated[param_name] = global_aggregated[param_name].to(original_dtypes[param_name])
-        
-        # Apply spatial regularization (conceptually - in practice, this influences convergence)
-        # The regularization term is computed for monitoring but not directly added to weights
-        reg_term = self.compute_spatial_regularization_term(zone_weights, zones)
-        
-        self.global_weights = global_aggregated
-        
-        return global_aggregated
-    
     def federated_aggregation_round(self, zones: Dict[str, Zone], 
-                                  device_updates: Dict[str, Dict[str, torch.Tensor]]) -> Tuple[Dict[str, torch.Tensor], Dict[str, Any]]:
+                                  num_device_updates: int, participating_zones: List[str], total_time, intra_time, inter_time, comm_cost) -> Dict[str, Any]:
         """
         Perform complete federated aggregation round.
         
         Implements Algorithm 2: ContinuumFL Aggregation Protocol.
         """
-        start_time = time.time()
-        round_stats = {
-            "round": self.current_round,
-            "participating_zones": 0,
-            "participating_devices": len(device_updates),
-            "aggregation_time": 0.0,
-            "communication_cost": 0.0
-        }
-        
-        # Phase 1: Local Training (already completed by devices)
-        
-        # Phase 2: Intra-Zone Aggregation
-        intra_start = time.time()
-        zone_weights = self.intra_zone_aggregation(zones, device_updates)
-        intra_time = time.time() - intra_start
-        
-        participating_zones = len(zone_weights)
-        round_stats["participating_zones"] = participating_zones
-        
-        if participating_zones == 0:
-            return self.global_weights or {}, round_stats
+        round_stats = {"round": self.current_round, "participating_zones": len(participating_zones),
+                       "participating_devices": num_device_updates, "aggregation_time": 0.0, "communication_cost": 0.0}
+        if len(participating_zones) == 0:
+            return round_stats
         
         # Update zone staleness
         for zone_id in zones:
-            if zone_id in zone_weights:
+            if zone_id in participating_zones:
                 self.zone_staleness[zone_id] = 0  # Reset staleness
             else:
                 self.zone_staleness[zone_id] += 1  # Increment staleness
-        
-        # Phase 3: Inter-Zone Aggregation
-        inter_start = time.time()
-        global_weights = self.inter_zone_aggregation(zone_weights, zones)
-        inter_time = time.time() - inter_start
-        
-        total_time = time.time() - start_time
+
         round_stats["aggregation_time"] = total_time
         round_stats["intra_zone_time"] = intra_time
         round_stats["inter_zone_time"] = inter_time
         
         # Estimate communication cost
-        comm_cost = self.estimate_communication_cost(device_updates, zone_weights)
         round_stats["communication_cost"] = comm_cost
         self.communication_costs.append(comm_cost)
         
@@ -400,27 +514,7 @@ class HierarchicalAggregator:
         
         self.current_round += 1
         
-        return global_weights, round_stats
-    
-    def estimate_communication_cost(self, device_updates: Dict[str, Dict[str, torch.Tensor]], 
-                                  zone_weights: Dict[str, Dict[str, torch.Tensor]]) -> float:
-        """Estimate communication cost in MB for this round"""
-        total_cost = 0.0
-        
-        # Device to zone communication (uplink)
-        for device_id, weights in device_updates.items():
-            device_size = sum(param.numel() * 4 for param in weights.values()) / (1024 * 1024)  # 4 bytes per float32
-            compressed_size = device_size * self.compression_rate  # Apply compression
-            total_cost += compressed_size
-        
-        # Zone to cloud communication (inter-zone)
-        for zone_id, weights in zone_weights.items():
-            zone_size = sum(param.numel() * 4 for param in weights.values()) / (1024 * 1024)
-            # Apply delta encoding (assume 50% reduction)
-            delta_encoded_size = zone_size * 0.5
-            total_cost += delta_encoded_size * 2  # Bidirectional
-        
-        return total_cost
+        return round_stats
     
     def get_aggregation_stats(self) -> Dict[str, Any]:
         """Get comprehensive aggregation statistics"""
