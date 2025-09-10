@@ -114,15 +114,16 @@ class HierarchicalAggregator:
         num_zones = len(base_weights)
         uniform_weight = 1.0 / num_zones
         fair_weights = {}
-        
+        print(f"Uniform weight = {uniform_weight}")
         for zone_id, base_weight in base_weights.items():
             # Compute deviation from uniform distribution
             deviation_ratio = (uniform_weight - base_weight) / uniform_weight
-            
+            print(f"Deviation ratio = {deviation_ratio}")
             # Apply fairness adjustment
             adjustment = 1.0 + self.fairness_strength * deviation_ratio
+            print(f"Adjustment = {adjustment}")
             fair_weight = base_weight * adjustment
-            
+            print(f"Fair weight = {fair_weight}")
             fair_weights[zone_id] = max(0.01, fair_weight)  # Ensure minimum weight
         
         # Renormalize to ensure weights sum to 1
@@ -130,7 +131,8 @@ class HierarchicalAggregator:
         if total_weight > 0:
             for zone_id in fair_weights:
                 fair_weights[zone_id] /= total_weight
-        
+        print(f"Fair Weights: {fair_weights}")
+
         self.zone_fair_weights = fair_weights
         return fair_weights
     
@@ -246,6 +248,7 @@ class HierarchicalAggregator:
                                 diff_squared += torch.sum(param_diff ** 2)
                         
                         regularization += correlation * diff_squared
+
         
         return self.spatial_regularization * regularization
     
