@@ -2,8 +2,6 @@
 ContinuumFL Coordinator - Main orchestrator for the spatial-aware federated learning framework.
 Implements the complete ContinuumFL protocol from the paper.
 """
-from asyncio import FIRST_COMPLETED
-from concurrent.futures import Future
 
 import torch
 import torch.nn as nn
@@ -14,7 +12,7 @@ import json
 from typing import Dict, List, Optional, Any
 from collections import defaultdict, deque
 import logging
-from concurrent.futures import ThreadPoolExecutor, wait
+from concurrent.futures import ThreadPoolExecutor, Future, wait, ALL_COMPLETED, FIRST_COMPLETED
 
 from torch import Tensor
 
@@ -52,7 +50,13 @@ class ContinuumFLCoordinator:
         self.devices: Dict[str, EdgeDevice] = {}
         self.zones: Dict[str, Zone] = {}
         self.global_model: Optional[nn.Module] = None
-        
+
+        # Aggregation Settings
+        self.async_aggregation = config.async_aggregation
+
+        # Device Settings
+        self.enable_failure = config.enable_failure
+
         # Training state
         self.current_round = 0
         self.is_training = False
@@ -271,11 +275,14 @@ class ContinuumFLCoordinator:
                     "model": self.global_model,
                     "learning_rate": self.config.learning_rate,
                     "epochs": self.config.local_epochs,
-                    "device_participation": self.device_participation
+                    "device_participation": self.device_participation,
+                    "enable_failure": self.enable_failure,
                 }
 
                 # 2. Start training in all zones
                 executor, futures = self._start_local_training(args)
+                return_when = FIRST_COMPLETED if self.async_aggregation else ALL_COMPLETED
+
                 round_num = 0
                 while futures and round_num < self.config.num_rounds:
                     round_start_time = time.time()
@@ -288,7 +295,7 @@ class ContinuumFLCoordinator:
                         self.logger.info("Updating zone assignments...")
                         device_list = [d for d in self.devices.values() if d.is_active]
                         self.zones = self.zone_discovery.adaptive_zone_update(device_list, self.zones)
-                    done, _ = wait(futures, return_when=FIRST_COMPLETED)
+                    done, _ = wait(futures, return_when=return_when)
                     self.logger.info(f"Aggregating gradients of {len(done)} Zone(s)...")
 
                     # 3. Hierarchical aggregation

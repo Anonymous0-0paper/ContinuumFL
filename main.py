@@ -65,6 +65,14 @@ def parse_arguments():
     parser.add_argument('--inter_zone_alpha', type=float, default=0.3,
                         help='Dirichlet alpha value across zones')
 
+    # Aggregation Settings
+    parser.add_argument('--async_aggregation', action='store_true', default=False,
+                        help='Enable asynchronous inter zone aggregation')
+
+    # Device Settings
+    parser.add_argument('--enable_failure', action='store_true', default=False,
+                        help='Enable simulation of failure for devices')
+
     # Experiment options
     parser.add_argument('--run_baselines', action='store_true',
                        help='Run baseline comparison')
@@ -165,6 +173,13 @@ def setup_configuration(args) -> ContinuumFLConfig:
     config.compression_rate = args.compression_rate
     config.intra_zone_alpha = args.intra_zone_alpha
     config.inter_zone_alpha = args.inter_zone_alpha
+
+    # Aggregation Settings
+    config.async_aggregation = args.async_aggregation
+
+    # Device Settings
+    config.enable_failure = args.enable_failure
+
     # System options - GPU checking will be done separately
     config.device = args.device
     config.random_seed = args.random_seed

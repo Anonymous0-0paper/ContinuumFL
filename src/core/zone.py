@@ -22,9 +22,14 @@ def run_training(args: dict[str, Any]):
     epochs = args["epochs"]
     learning_rate = args["learning_rate"]
     comp_device = args["comp_device"]
+    enable_failure = args["enable_failure"]
+
+    failure = False
+    if enable_failure:
+        failure = device.simulate_failure()
 
     # active device fails
-    if device.is_active and device.simulate_failure():
+    if device.is_active and failure:
         return None
 
     # device active or failed device is repaired
@@ -93,7 +98,8 @@ class Zone:
         self.backup_aggregators: List[str] = []
 
         self.compression_rate = compression_rate
-        
+
+        self.sample_device_seed = 42
     def add_device(self, device: EdgeDevice):
         """Add a device to this zone"""
         self.devices[device.device_id] = device
@@ -141,6 +147,9 @@ class Zone:
             participation_rate = 0.7  # 70% participation rate
             num_participants = max(1, int(participation_rate * len(available_devices)))
 
+            np.random.seed(self.sample_device_seed)
+            self.sample_device_seed += 1
+
             participating = np.random.choice(
                 available_devices, size=num_participants, replace=False
             ).tolist()
@@ -158,6 +167,7 @@ class Zone:
         learning_rate = args["learning_rate"]
         epochs = args["epochs"]
         device_participation = args["device_participation"]
+        enable_failure = args["enable_failure"]
         device_updates = {}
 
         from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -169,7 +179,8 @@ class Zone:
         device_args = [
             {"device": self.devices[device_id], "model": global_model, "epochs": epochs,
              "learning_rate": learning_rate,
-             "comp_device": comp_device} for device_id in participating_devices]
+             "comp_device": comp_device,
+             "enable_failure": enable_failure} for device_id in participating_devices]
         with ThreadPoolExecutor(max_workers=max(1, max_workers)) as executor:
             futures = [executor.submit(run_training, args) for args in device_args]
 
