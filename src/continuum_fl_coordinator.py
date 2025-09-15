@@ -378,7 +378,7 @@ class ContinuumFLCoordinator:
         return final_results
 
     def _start_local_training(self, args) -> tuple[
-        ThreadPoolExecutor, list[Future[tuple[str, dict[str, Tensor], dict[str, list[str] | int]]]]]:
+        ThreadPoolExecutor, list[Future[tuple[str, Any, Any, dict[str, list[str] | int | float]]]]]:
         """Start local training in all Zones"""
 
         from concurrent.futures import ThreadPoolExecutor

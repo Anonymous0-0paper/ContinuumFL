@@ -159,7 +159,7 @@ class Zone:
 
         return []
 
-    def perform_local_training(self, args) -> tuple[str, dict[str, Tensor], dict[str, list[str] | int]]:
+    def perform_local_training(self, args) -> tuple[str, Any, dict[str, list[str] | int | float]]:
         """Perform local training on participating devices"""
 
         participating_devices = self._sample_participating_devices()
@@ -211,11 +211,12 @@ class Zone:
                                     zone_weights: Dict[str, Dict[str, torch.Tensor]]) -> float:
         """Estimate communication cost in MB for this round"""
         total_cost = 0.0
+        compression_rate = self.compression_rate if self.enable_compression else 1.0
 
         # Device to zone communication (uplink)
         for device_id, weights in device_updates.items():
             device_size = sum(param.numel() * 4 for param in weights.values()) / (1024 * 1024)  # 4 bytes per float32
-            compressed_size = device_size * self.compression_rate  # Apply compression
+            compressed_size = device_size * compression_rate
             total_cost += compressed_size
 
         # Zone to cloud communication (inter-zone)
@@ -262,7 +263,8 @@ class Zone:
         self.intra_zone_weights = weights
         return weights
     
-    def intra_zone_aggregation(self, device_updates: Dict[str, Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
+    def intra_zone_aggregation(self, device_updates: Dict[str, Dict[str, torch.Tensor]]) -> dict[Any, Any] | tuple[
+        dict[Any, Any], dict[Any, Any]]:
         """
         Perform intra-zone aggregation of device updates.
         
@@ -314,18 +316,20 @@ class Zone:
                 aggregated_weights[param_name] = aggregated_weights[param_name].to(original_dtypes[param_name])
         
         # Apply gradient compression
-        compressed_weights = self._apply_gradient_compression(aggregated_weights, compression_rate=self.compression_rate) if self.enable_compression else aggregated_weights
-        
-        self.aggregated_weights = compressed_weights
+        if self.enable_compression:
+            compressed_weights = self._apply_gradient_compression(aggregated_weights, compression_rate=self.compression_rate)
+            self.aggregated_weights = compressed_weights
+        else:
+            self.aggregated_weights = aggregated_weights
         
         # Track aggregation time
         aggregation_time = time.time() - start_time
         self.aggregation_times.append(aggregation_time)
         
-        return compressed_weights
+        return self.aggregated_weights
     
     def _apply_gradient_compression(self, weights: Dict[str, torch.Tensor], 
-                                  compression_rate: float = 0.1) -> Dict[str, torch.Tensor]:
+                                  compression_rate: float = 0.1) -> Dict[str, Tensor]:
         """Apply top-k compression to aggregated weights"""
         compressed_weights = {}
         
