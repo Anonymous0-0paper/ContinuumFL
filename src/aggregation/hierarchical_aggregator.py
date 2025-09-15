@@ -291,8 +291,11 @@ class HierarchicalAggregator:
         
         # Compute zone aggregation weights
         base_weights = self.compute_zone_base_weights(zones)
+        print(f"Base Weights: {base_weights}")
         fair_weights = self.apply_fairness_adjustment(base_weights)
+        print(f"Fair Weights: {fair_weights}")
         final_weights = self.apply_staleness_penalty(fair_weights)
+        print(f"Final Weights: {final_weights}")
         # Update spatial correlations
         self.update_spatial_correlations(zones)
         

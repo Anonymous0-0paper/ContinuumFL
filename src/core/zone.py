@@ -54,7 +54,7 @@ class Zone:
     - Zone-level objective F_k(w)
     """
     
-    def __init__(self, zone_id: str, edge_server_id: str, compression_rate: float):
+    def __init__(self, zone_id: str, edge_server_id: str, compression_rate: float, enable_compression: bool = False):
         self.zone_id = zone_id
         self.edge_server_id = edge_server_id
         
@@ -98,6 +98,7 @@ class Zone:
         self.backup_aggregators: List[str] = []
 
         self.compression_rate = compression_rate
+        self.enable_compression = enable_compression
 
         self.sample_device_seed = 42
     def add_device(self, device: EdgeDevice):
@@ -312,16 +313,16 @@ class Zone:
             if original_dtypes[param_name] != torch.float32:
                 aggregated_weights[param_name] = aggregated_weights[param_name].to(original_dtypes[param_name])
         
-        # Apply gradient compression (temporarily disabled)
-        # compressed_weights = self._apply_gradient_compression(aggregated_weights)
+        # Apply gradient compression
+        compressed_weights = self._apply_gradient_compression(aggregated_weights, compression_rate=self.compression_rate) if self.enable_compression else aggregated_weights
         
-        self.aggregated_weights = aggregated_weights # TODO use compressed weights
+        self.aggregated_weights = compressed_weights
         
         # Track aggregation time
         aggregation_time = time.time() - start_time
         self.aggregation_times.append(aggregation_time)
         
-        return aggregated_weights # TODO return compressed weights
+        return compressed_weights
     
     def _apply_gradient_compression(self, weights: Dict[str, torch.Tensor], 
                                   compression_rate: float = 0.1) -> Dict[str, torch.Tensor]:

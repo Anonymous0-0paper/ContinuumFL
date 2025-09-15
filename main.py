@@ -36,6 +36,10 @@ def parse_arguments():
                        help='Number of edge devices')
     parser.add_argument('--num_zones', type=int, default=20,
                        help='Number of spatial zones')
+    parser.add_argument('--min_zone_size', type=int, default=4,
+                        help='Minimum number of devices within a zone')
+    parser.add_argument('--max_zone_size', type=int, default=15,
+                        help='Maximum number of devices within a zone')
     parser.add_argument('--num_rounds', type=int, default=200,
                        help='Number of training rounds')
     
@@ -60,6 +64,8 @@ def parse_arguments():
                         help='Correlation threshold for neighborship')
     parser.add_argument('--compression_rate', type=float, default=0.1,
                         help='Gradient compression rate')
+    parser.add_argument('--enable_compression', action='store_true', default=False,
+                        help='Enable compression during parameter transmission')
     parser.add_argument('--intra_zone_alpha', type=float, default=10,
                         help='Dirichlet alpha value within zones')
     parser.add_argument('--inter_zone_alpha', type=float, default=0.3,
@@ -158,6 +164,8 @@ def setup_configuration(args) -> ContinuumFLConfig:
     config.dataset_name = args.dataset
     config.num_devices = args.num_devices
     config.num_zones = args.num_zones
+    config.min_zone_size = args.min_zone_size
+    config.max_zone_size = args.max_zone_size
     config.num_rounds = args.num_rounds
     config.local_epochs = args.local_epochs
     config.learning_rate = args.learning_rate
@@ -171,6 +179,7 @@ def setup_configuration(args) -> ContinuumFLConfig:
     config.spatial_regularization = args.spatial_regularization
     config.correlation_threshold = args.correlation_threshold
     config.compression_rate = args.compression_rate
+    config.enable_compression = args.enable_compression
     config.intra_zone_alpha = args.intra_zone_alpha
     config.inter_zone_alpha = args.inter_zone_alpha
 

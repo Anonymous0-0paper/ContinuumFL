@@ -108,9 +108,7 @@ class EdgeDevice:
         
         self.local_model.train()
         # Setup optimizer
-        #optimizer = torch.optim.SGD(self.local_model.parameters(),
-                                  #lr=learning_rate, momentum=0.9, weight_decay=1e-4)
-        optimizer = torch.optim.Adam(self.local_model.parameters(), lr=0.001)
+        optimizer = torch.optim.Adam(self.local_model.parameters(), lr=learning_rate)
         criterion = nn.CrossEntropyLoss()
         
         # Move criterion to same device
