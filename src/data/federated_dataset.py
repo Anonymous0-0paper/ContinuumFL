@@ -6,7 +6,7 @@ Handles dataset downloading, preprocessing, and non-IID distribution across zone
 import os
 import random
 from math import floor
-
+import time
 import datasets
 import numpy as np
 import torch
@@ -109,38 +109,38 @@ class FederatedDataset:
         print(f"CIFAR-100 loaded: {len(self.train_data)} train, {len(self.test_data)} test samples")
 
     def _prepare_femnist(self):
-        """Prepare FEMNIST dataset"""
+        """Prepare FEMNIST dataset safely."""
         print("Preparing FEMNIST dataset...")
-        
-        # Check if already processed
-        femnist_path = os.path.join(self.data_dir, 'femnist')
-        if os.path.exists(os.path.join(femnist_path, 'train.pkl')):
-            print("Loading existing FEMNIST data...")
-            with open(os.path.join(femnist_path, 'train.pkl'), 'rb') as f:
-                train_ds = pickle.load(f)
-            with open(os.path.join(femnist_path, 'test.pkl'), 'rb') as f:
-                test_ds = pickle.load(f)
 
+        femnist_path = os.path.join(self.data_dir, 'femnist')
+        os.makedirs(femnist_path, exist_ok=True)
+
+        train_file = os.path.join(femnist_path, 'train.pkl')
+        test_file = os.path.join(femnist_path, 'test.pkl')
+
+        if os.path.exists(train_file) and os.path.exists(test_file):
+            print("Loading existing FEMNIST data...")
+            with open(train_file, 'rb') as f:
+                train_ds = pickle.load(f)
+            with open(test_file, 'rb') as f:
+                test_ds = pickle.load(f)
             self.process_femnist(train_ds, test_ds)
             return
-        
-        # Download and process FEMNIST
-        self._download_femnist()
 
-    class FEMNISTDataset(Dataset):
-        def __init__(self, ds, transform=None):
-            self.images = ds['image']
-            self.targets = ds['character']
-            self.transform = transform
-        def __len__(self):
-            return len(self.targets)
+        print("Downloading FEMNIST dataset...")
+        download_config = DownloadConfig(cache_dir=femnist_path)
+        dataset = load_dataset('flwrlabs/femnist', download_config=download_config)
 
-        def __getitem__(self, idx):
-            image = self.images[idx]
-            label = self.targets[idx]
-            if self.transform:
-                image = self.transform(image)
-            return image, label
+        split_ds = dataset['train'].train_test_split(test_size=0.2, seed=42)
+        train_ds = split_ds['train']
+        test_ds = split_ds['test']
+
+        with open(train_file, 'wb') as f:
+            pickle.dump(train_ds, f)
+        with open(test_file, 'wb') as f:
+            pickle.dump(test_ds, f)
+
+        self.process_femnist(train_ds, test_ds)
 
     def _download_femnist(self):
         """Download and process FEMNIST dataset"""
@@ -165,25 +165,44 @@ class FederatedDataset:
         self.process_femnist(train_ds, test_ds)
 
     def process_femnist(self, train_ds, test_ds):
-        """Process FEMNIST dataset"""
-
-        len_train_set = len(train_ds)
-        num_samples = min(self.max_samples, len_train_set) if self.max_samples > 0 else len_train_set
-        if num_samples < len_train_set:
-            train_ds = train_ds.train_test_split(test_size=1 - (num_samples / len_train_set), seed=42)['train']
-            test_ds = test_ds.train_test_split(test_size=(num_samples / len_train_set), seed=42)['test']
-
-        train_ds = train_ds.remove_columns([col for col in train_ds.column_names if col not in ['image', 'character']])
-        test_ds = test_ds.remove_columns([col for col in test_ds.column_names if col not in ['image', 'character']])
+        """Process FEMNIST dataset into PyTorch-ready format."""
+        # Limit samples if needed
+        if self.max_samples > 0:
+            train_len = len(train_ds)
+            num_samples = min(self.max_samples, train_len)
+            if num_samples < train_len:
+                train_ds = train_ds.select(range(num_samples))
+                test_ds = test_ds.select(range(min(num_samples, len(test_ds))))
 
         transform = transforms.Compose([
             transforms.Grayscale(num_output_channels=1),
             transforms.ToTensor(),
-            transforms.Normalize((0.5,), (0.5,)),
+            transforms.Normalize((0.5,), (0.5,))
         ])
 
-        self.train_data = self.FEMNISTDataset(train_ds, transform=transform)
-        self.test_data = self.FEMNISTDataset(test_ds, transform=transform)
+        class FEMNISTDataset(Dataset):
+            def __init__(self, hf_dataset, transform=None):
+                self.dataset = hf_dataset
+                self.transform = transform
+
+                # Store data and labels for compatibility with FederatedDataset
+                self.data = [item['image'] for item in hf_dataset]
+                self.targets = [item['character'] for item in hf_dataset]
+
+            def __len__(self):
+                return len(self.dataset)
+
+            def __getitem__(self, idx):
+                image = self.data[idx]  # This is already a PIL image
+                label = self.targets[idx]
+
+                if self.transform:
+                    image = self.transform(image)  # Apply transform directly
+
+                return image, label
+
+        self.train_data = FEMNISTDataset(train_ds, transform=transform)
+        self.test_data = FEMNISTDataset(test_ds, transform=transform)
 
         print(f"FEMNIST processed: {len(self.train_data)} train, {len(self.test_data)} test samples")
 

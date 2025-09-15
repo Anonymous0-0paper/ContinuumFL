@@ -93,7 +93,6 @@ class EdgeDevice:
         """
         if self.local_dataloader is None or not self.is_active:
             return {"success": False, "reason": "No dataset or inactive device"}
-
         start_time = time.time()
         
         # Initialize local model with global weights
