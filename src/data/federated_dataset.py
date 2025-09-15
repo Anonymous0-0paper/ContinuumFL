@@ -18,7 +18,7 @@ from typing import Dict, List, Tuple, Optional, Any, Union
 import pickle
 import json
 from collections import defaultdict
-from datasets import load_dataset, DownloadConfig
+from datasets import load_dataset, DownloadConfig, concatenate_datasets
 from src.core.zone import Zone
 from src.models.model_factory import FEMNISTNet
 
@@ -241,39 +241,28 @@ class FederatedDataset:
         return CustomDataset(data_dict)
 
     class ShakespeareDataset(torch.utils.data.Dataset):
-        def __init__(self, text, seq_length=80, step=1):
-            self.data_len = max(0, (len(text) - seq_length - 1) // step + 1)
-            self.text = text[:self.data_len * step + seq_length]
-            self.seq_length = seq_length
-            self.step = step
-            self.vocab = sorted(set(text))
-            self.num_classes = len(self.vocab)
+        def __init__(self, dataset):
+            print("init")
+            vocab = set()
+            for seq in dataset["x"]:
+                vocab.update(seq)
+            self.vocab = sorted(vocab)
             self.stoi = {ch: i for i, ch in enumerate(self.vocab)}
             self.itos = {i: ch for i, ch in enumerate(self.vocab)}
-
-            self.targets = torch.tensor(
-                [self.stoi[text[i * step + seq_length]] for i in range(self.data_len)],
-                dtype=torch.long
-            )
+            # Keep sequences as lists of ints (convert to tensor in __getitem__)
+            self.sequences = [[self.stoi[c] for c in seq] for seq in dataset["x"]]
+            self.targets = [self.stoi[y] for y in dataset["y"]]
+            self.num_classes = len(self.vocab)
+            self.classes = self.vocab
 
         def __len__(self):
-            return self.data_len
+            return len(self.sequences)
 
         def __getitem__(self, idx):
-            start = idx * self.step
-            end = start + self.seq_length
-
-            # Make sure we never step out of range
-            if end >= len(self.text) - 1:
-                end = len(self.text) - self.seq_length - 1
-                start = end - self.seq_length
-
-            seq = self.text[start:end]
-            target = self.text[end]
-
-            seq_tensor = torch.tensor([self.stoi[c] for c in seq], dtype=torch.long)
-            target_tensor = torch.tensor(self.stoi[target], dtype=torch.long)
-            return seq_tensor, target_tensor
+            t0 = time.time()
+            smp = torch.tensor(self.sequences[idx], dtype=torch.long), self.targets[idx]
+            print(f"Time to get item: {time.time() - t0}")
+            return smp
 
     def _prepare_shakespeare(self):
         """Prepare Shakespeare dataset"""
@@ -286,21 +275,15 @@ class FederatedDataset:
         if os.path.exists(os.path.join(shakespeare_path, 'train.pkl')):
             print("Loading existing Shakespeare data...")
             with open(os.path.join(shakespeare_path, 'train.pkl'), 'rb') as f:
-                train_text = pickle.load(f)
-                len_trainset = len(train_text)
-                num_samples = min(self.max_samples, len_trainset) if self.max_samples > 0 else len_trainset
-                train_step = len_trainset // num_samples
-                self.train_data = self.ShakespeareDataset(train_text, seq_length=80, step=train_step)
+                train_dataset = pickle.load(f)
+                self.train_data = self.ShakespeareDataset(train_dataset)
 
             with open(os.path.join(shakespeare_path, 'test.pkl'), 'rb') as f:
-                test_text = pickle.load(f)
-                len_testset = len(test_text)
-                test_step = len_testset // floor((num_samples / len_trainset) * len_testset)
-                self.test_data = self.ShakespeareDataset(test_text, seq_length=80, step=test_step)
-            print(f"Train step: {train_step}, Test step: {test_step}")
+                test_data = pickle.load(f)
+                self.test_data = self.ShakespeareDataset(test_data)
             return
-        
-        # Download and process Shakespeare data
+
+        # Download and process Shakespeare dataset
         self._download_shakespeare()
 
     def _download_shakespeare(self):
@@ -309,57 +292,39 @@ class FederatedDataset:
 
         # Load dataset from Hugging Face
         download_config = DownloadConfig(cache_dir=shakespeare_path)
-        dataset = load_dataset("flwrlabs/shakespeare", download_config=download_config)
+        dataset = load_dataset("flwrlabs/shakespeare", download_config=download_config)["train"]
 
-        # Concatenate all lines into one string
-        full_text = "".join(dataset["train"]["x"])
+        speaker_indices = defaultdict(list)
+        for i, speaker in enumerate(dataset["character_id"]):
+            speaker_indices[speaker].append(i)
 
-        # Limit dataset size
-        max_chars = 3_000_000
-        full_text = full_text[:max_chars]
+        print(f"Dataset-Size: {len(dataset)}")
+        train_indices = []
+        test_indices = []
 
-        # Simple 80/20 split preserving text order
-        split_point = int(0.8 * len(full_text))
-        train_text = full_text[:split_point]
-        test_text = full_text[split_point:]
+        for speaker, indices in speaker_indices.items():
+            split_idx = int(0.8 * len(indices))
+            random.seed(42)
+            random.shuffle(indices)
+            train_indices.extend(indices[:split_idx])
+            test_indices.extend(indices[split_idx:])
 
-        # Convert to lists for consistency with your existing code
-        train_text = list(train_text)
-        test_text = list(test_text)
+        # Concatenate all speaker splits into one Dataset
+        train_dataset = dataset.select(train_indices)
+        print(f"Trainset-Size: {len(train_dataset)}")
+        test_dataset = dataset.select(test_indices)
+        print(f"Test-Size: {len(test_dataset)}")
 
         # Save raw train/test texts
         with open(os.path.join(shakespeare_path, 'train.pkl'), 'wb') as f:
-            pickle.dump(train_text, f)
+            pickle.dump(train_dataset, f)
         with open(os.path.join(shakespeare_path, 'test.pkl'), 'wb') as f:
-            pickle.dump(test_text, f)
+            pickle.dump(test_dataset, f)
 
-        # Wrap as Dataset objects
-        len_trainset = len(train_text)
-        len_testset = len(test_text)
-        num_samples = min(self.max_samples, len_trainset) if self.max_samples > 0 else len_trainset
-
-        train_step = len_trainset // num_samples
-        test_step = len_testset // floor((num_samples / len_trainset) * len_testset)
-        print(f"Train step: {train_step}, Test step: {test_step}")
-        self.train_data = self.ShakespeareDataset(train_text, seq_length=80, step=train_step)
-        self.test_data = self.ShakespeareDataset(test_text, seq_length=80, step=test_step)
+        self.train_data = self.ShakespeareDataset(train_dataset)
+        self.test_data = self.ShakespeareDataset(test_dataset)
 
         print(f"Shakespeare processed: {len(self.train_data)} train, {len(self.test_data)} test samples")
-
-    def _text_dict_to_dataset(self, data_dict: Dict[str, torch.Tensor]) -> Dataset:
-        """Convert text dictionary to PyTorch dataset"""
-        class TextDataset(Dataset):
-            def __init__(self, sequences, targets):
-                self.sequences = sequences
-                self.targets = targets
-            
-            def __len__(self):
-                return len(self.sequences)
-
-            def __getitem__(self, idx):
-                return self.sequences[idx], self.targets[idx]
-        
-        return TextDataset(data_dict['sequences'], data_dict['targets'])
     
     def distribute_data_to_devices(self, devices: List[str], zones: Dict[str, List[str]]) -> Dict[str, Tuple[Subset, Subset]]:
         """
