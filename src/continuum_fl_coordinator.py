@@ -63,7 +63,7 @@ class ContinuumFLCoordinator:
         self.training_history = deque(maxlen=1000)
         
         # Performance tracking
-        self.round_times = deque(maxlen=100)
+        self.round_times = deque(maxlen=1000)
         self.accuracies = deque(maxlen=1000)
         self.losses = deque(maxlen=1000)
         self.communication_costs = deque(maxlen=1000)
@@ -296,6 +296,7 @@ class ContinuumFLCoordinator:
                         device_list = [d for d in self.devices.values() if d.is_active]
                         self.zones = self.zone_discovery.adaptive_zone_update(device_list, self.zones)
                     done, _ = wait(futures, return_when=return_when)
+                    waiting_time = time.time() - round_start_time
                     self.logger.info(f"Aggregating gradients of {len(done)} Zone(s)...")
 
                     # 3. Hierarchical aggregation
@@ -340,7 +341,7 @@ class ContinuumFLCoordinator:
                         aggregation_stats = {"participating_devices": 0, "participating_zones": 0}
                     # 4. Evaluation
                     round_metrics = self._evaluate_round(total_participating_devices, aggregation_stats)
-
+                    round_metrics["waiting_time"] = waiting_time
                     # 5. Track performance
                     round_time = time.time() - round_start_time
                     self.round_times.append(round_time)
