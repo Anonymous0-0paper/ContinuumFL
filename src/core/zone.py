@@ -106,7 +106,10 @@ class Zone:
         self.devices[device.device_id] = device
         self.device_ids.add(device.device_id)
         device.zone_id = self.zone_id
-        
+        if device.resources.bandwidth >= self.allocated_bandwidth - self.allocated_bandwidth/10 and \
+                device.resources.compute_capacity >= self.compute_capacity - self.compute_capacity/10 and \
+                device.resources.memory_capacity >= self.memory_capacity:
+            self.backup_aggregators.append(device.device_id)
         # Update zone statistics
         self._update_zone_statistics()
     
@@ -116,6 +119,7 @@ class Zone:
             del self.devices[device_id]
             self.device_ids.discard(device_id)
             self._update_zone_statistics()
+            self.backup_aggregators.remove(device_id)
             return True
         return False
     

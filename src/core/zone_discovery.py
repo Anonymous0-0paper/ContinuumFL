@@ -461,7 +461,72 @@ class ZoneDiscovery:
                 zone.identify_neighbor_zones(zones, correlation_threshold=self.correlation_threshold)
         
         return zones
-    
+
+    def handle_zone_failure(self, zoneless_devices: Dict[str, EdgeDevice],
+                             zones: Dict[str, Zone], failed_zones: Dict[str, Zone]) -> Dict[str, Zone]:
+        """
+        """
+        reassignments = []
+
+        # Check each device for potential reassignment
+        for device_id, device in zoneless_devices.items():
+            if not device.is_active or not device.zone_id:
+                continue
+
+            current_zone_id = device.zone_id
+
+            min_reassignment_cost = np.inf
+            best_candidate = None
+
+            # Evaluate alternative zones
+            for candidate_zone_id, candidate_zone in zones.items():
+                if candidate_zone_id != current_zone_id:
+                    reassignment_cost = self.compute_reassignment_cost(
+                        device, current_zone_id, candidate_zone_id, zones
+                    )
+                    if reassignment_cost < min_reassignment_cost and len(candidate_zone.devices) > self.max_zone_size:
+                        min_reassignment_cost = reassignment_cost
+                        best_candidate = candidate_zone_id
+            if best_candidate:
+                reassignments.append((device.device_id, current_zone_id, best_candidate))
+                del zoneless_devices[device_id]
+
+        # Apply reassignments
+        print(f"Reassignments: {reassignments}")
+        for device_id, from_zone_id, to_zone_id in reassignments:
+            print(f"{device_id} is in {from_zone_id} but should be in {to_zone_id}.\n"
+                    f"{from_zone_id}: {zones[from_zone_id].devices}\n"
+                    f"{to_zone_id}: {zones[to_zone_id].devices}")
+            if from_zone_id in zones and to_zone_id in zones:
+                device = zones[from_zone_id].devices[device_id]
+                zones[from_zone_id].remove_device(device_id)
+                zones[to_zone_id].add_device(device)
+
+        # If Leftovers: Promote Device to Zone Aggregator
+        for zone_id, zone in failed_zones:
+            if len(zone.devices) >= self.min_zone_size:
+                zone_reactivated = False
+                for backup_aggregator in zone.backup_aggregators:
+                    if zoneless_devices[backup_aggregator].is_active:
+                        # TODO Reactivate Zone (add attribute to track activeness for zone)
+                        zone_reactivated = True
+                        zone_id = zoneless_devices[backup_aggregator].zone_id
+                        for device_id, _ in failed_zones[zone_id].devices.items():
+                            del zoneless_devices[device_id]
+
+        # If Leftovers: Devices must talk to Cloud Coordinator directly
+
+
+
+
+        # Update correlations if reassignments occurred
+        if reassignments:
+            for zone in zones.values():
+                zone.update_spatial_correlations(zones)
+                zone.identify_neighbor_zones(zones, correlation_threshold=self.correlation_threshold)
+
+        return zones
+
     def get_discovery_stats(self) -> Dict[str, Any]:
         """Get statistics about the zone discovery process"""
         if not self.zone_assignments_history:

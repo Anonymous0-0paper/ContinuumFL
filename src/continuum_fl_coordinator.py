@@ -48,6 +48,7 @@ class ContinuumFLCoordinator:
         
         # System state
         self.devices: Dict[str, EdgeDevice] = {}
+        self.standalone_devices: Dict[str, EdgeDevice] = {}
         self.zones: Dict[str, Zone] = {}
         self.global_model: Optional[nn.Module] = None
 
@@ -358,6 +359,7 @@ class ContinuumFLCoordinator:
                     round_num = self.current_round
                     # Restart training for aggregated zones
                     for zone_id in zone_weights.keys():
+                        # TODO Simulate Zone failure (also handle self.standalone_devices in intra_zone_aggregation)
                         futures.append(executor.submit(self.zones[zone_id].perform_local_training, args))
                 executor.shutdown(wait=False)
         
