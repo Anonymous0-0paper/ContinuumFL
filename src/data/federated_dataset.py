@@ -242,27 +242,34 @@ class FederatedDataset:
 
     class ShakespeareDataset(torch.utils.data.Dataset):
         def __init__(self, dataset):
-            print("init")
-            vocab = set()
-            for seq in dataset["x"]:
-                vocab.update(seq)
-            self.vocab = sorted(vocab)
+            self.vocab = [' ', '!', '"', '&', "'", '(', ')', ',', '-', '.', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '?', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '}', '>', '<']
             self.stoi = {ch: i for i, ch in enumerate(self.vocab)}
             self.itos = {i: ch for i, ch in enumerate(self.vocab)}
-            # Keep sequences as lists of ints (convert to tensor in __getitem__)
-            self.sequences = [[self.stoi[c] for c in seq] for seq in dataset["x"]]
-            self.targets = [self.stoi[y] for y in dataset["y"]]
+            print(f"1, len(vocab) = {len(self.vocab)}")
+            max_len = max(len(seq) for seq in dataset["x"])
+            n_samples = len(dataset["x"])
+            print("2")
+
+            sequences_np = np.zeros((n_samples, max_len), dtype=np.int32)
+            print("3")
+
+            for i, seq in enumerate(dataset["x"]):
+                sequences_np[i, :len(seq)] = [self.stoi[c] for c in seq]
+            print("4")
+
+            self.sequences = sequences_np
+            self.targets = np.array([self.stoi[y] for y in dataset["y"]], dtype=np.int32)
+            print("5")
+
             self.num_classes = len(self.vocab)
             self.classes = self.vocab
+            print("6")
 
         def __len__(self):
             return len(self.sequences)
 
         def __getitem__(self, idx):
-            t0 = time.time()
-            smp = torch.tensor(self.sequences[idx], dtype=torch.long), self.targets[idx]
-            print(f"Time to get item: {time.time() - t0}")
-            return smp
+            return torch.tensor(self.sequences[idx], dtype=torch.long), self.targets[idx]
 
     def _prepare_shakespeare(self):
         """Prepare Shakespeare dataset"""
@@ -301,13 +308,15 @@ class FederatedDataset:
         print(f"Dataset-Size: {len(dataset)}")
         train_indices = []
         test_indices = []
-
+        random.seed(42)
         for speaker, indices in speaker_indices.items():
-            split_idx = int(0.8 * len(indices))
-            random.seed(42)
+            rnd = random.random()
             random.shuffle(indices)
-            train_indices.extend(indices[:split_idx])
-            test_indices.extend(indices[split_idx:])
+
+            if rnd > 0.8:
+                test_indices.extend(indices)
+            else:
+                train_indices.extend(indices)
 
         # Concatenate all speaker splits into one Dataset
         train_dataset = dataset.select(train_indices)
@@ -326,7 +335,7 @@ class FederatedDataset:
 
         print(f"Shakespeare processed: {len(self.train_data)} train, {len(self.test_data)} test samples")
     
-    def distribute_data_to_devices(self, devices: List[str], zones: Dict[str, List[str]]) -> Dict[str, Tuple[Subset, Subset]]:
+    def distribute_data_to_devices(self, zones: Dict[str, List[str]]) -> Dict[str, Tuple[Subset, Subset]]:
         """
         Distribute data to devices with spatial non-IID characteristics.
         
