@@ -11,7 +11,7 @@ import torch
 import numpy as np
 import time
 import json
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 
 # Add src to path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
@@ -36,6 +36,10 @@ def parse_arguments():
                        help='Number of edge devices')
     parser.add_argument('--num_zones', type=int, default=20,
                        help='Number of spatial zones')
+    parser.add_argument('--min_zone_size', type=int, default=4,
+                        help='Minimum number of devices within a zone')
+    parser.add_argument('--max_zone_size', type=int, default=15,
+                        help='Maximum number of devices within a zone')
     parser.add_argument('--num_rounds', type=int, default=200,
                        help='Number of training rounds')
     
@@ -56,9 +60,31 @@ def parse_arguments():
                        help='Weight for network similarity')
     parser.add_argument('--spatial_regularization', type=float, default=0.1,
                        help='Spatial regularization parameter')
+    parser.add_argument('--correlation_threshold', type=float, default=0.05,
+                        help='Correlation threshold for neighborship')
     parser.add_argument('--compression_rate', type=float, default=0.1,
-                       help='Gradient compression rate')
-    
+                        help='Gradient compression rate')
+    parser.add_argument('--enable_compression', action='store_true', default=False,
+                        help='Enable compression during parameter transmission')
+    parser.add_argument('--intra_zone_alpha', type=float, default=10,
+                        help='Dirichlet alpha value within zones')
+    parser.add_argument('--inter_zone_alpha', type=float, default=0.3,
+                        help='Dirichlet alpha value across zones')
+
+    # Aggregation Settings
+    parser.add_argument('--async_aggregation', action='store_true', default=False,
+                        help='Enable asynchronous inter zone aggregation')
+
+    # Device Settings
+    parser.add_argument('--enable_failure', action='store_true', default=False,
+                        help='Enable simulation of failure for devices')
+    parser.add_argument('--device_failure_probability', type=float, default=0.05,
+                        help='Probability of device failure')
+    parser.add_argument('--zone_failure_probability', type=float, default=0.02,
+                        help='Probability of zone failure')
+
+    parser.add_argument('--shakespeare_num_speakers', type=int, default=35,
+                        help='Set number of heterogeneous text sources (only available for shakespear dataset)')
     # Experiment options
     parser.add_argument('--run_baselines', action='store_true',
                        help='Run baseline comparison')
@@ -144,6 +170,8 @@ def setup_configuration(args) -> ContinuumFLConfig:
     config.dataset_name = args.dataset
     config.num_devices = args.num_devices
     config.num_zones = args.num_zones
+    config.min_zone_size = args.min_zone_size
+    config.max_zone_size = args.max_zone_size
     config.num_rounds = args.num_rounds
     config.local_epochs = args.local_epochs
     config.learning_rate = args.learning_rate
@@ -155,8 +183,21 @@ def setup_configuration(args) -> ContinuumFLConfig:
     config.similarity_weights['data'] = args.data_weight
     config.similarity_weights['network'] = args.network_weight
     config.spatial_regularization = args.spatial_regularization
+    config.correlation_threshold = args.correlation_threshold
     config.compression_rate = args.compression_rate
-    
+    config.enable_compression = args.enable_compression
+    config.intra_zone_alpha = args.intra_zone_alpha
+    config.inter_zone_alpha = args.inter_zone_alpha
+
+    # Aggregation Settings
+    config.async_aggregation = args.async_aggregation
+
+    # Device Settings
+    config.enable_failure = args.enable_failure
+    config.zone_failure_probability = args.zone_failure_probability
+    config.device_failure_probability = args.device_failure_probability
+
+    config.shakespeare_num_speakers = args.shakespeare_num_speakers
     # System options - GPU checking will be done separately
     config.device = args.device
     config.random_seed = args.random_seed
@@ -197,7 +238,7 @@ def print_experiment_info(config: ContinuumFLConfig, args):
     print(f"Run Baselines: {args.run_baselines}")
     print("="*80)
 
-def run_continuum_fl_experiment(config: ContinuumFLConfig) -> (Dict[str, Any], Any):
+def run_continuum_fl_experiment(config: ContinuumFLConfig) -> Tuple[Dict[str, Any], Any]:
     """Run the main ContinuumFL experiment"""
     
     print("\n🚀 Starting ContinuumFL Experiment...")

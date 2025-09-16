@@ -1,0 +1,24 @@
+# Pycache at any depth
+**/__pycache__/
+
+# Result folder for experiments (created at runtime)
+results/
+
+# Runtime logs
+logs/
+
+# Datasets
+data/
+
+# Markdown Files
+*.md
+
+# test python-scripts and test logs
+test_*
+
+# LaTeX Files
+*.tex
+
+# git folder and gitignore
+.gitignore
+.git/

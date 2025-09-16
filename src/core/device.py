@@ -2,6 +2,7 @@
 Core device module for ContinuumFL framework.
 Implements edge devices with spatial coordinates, resource constraints, and FL capabilities.
 """
+import gc
 
 import numpy as np
 import torch
@@ -14,6 +15,7 @@ from collections import deque
 
 from matplotlib import pyplot as plt
 
+from src.memory_log.memory_log import log_mem
 from src.models.model_factory import ShakespeareLSTM
 
 
@@ -50,7 +52,7 @@ class EdgeDevice:
         
         # Performance tracking
         self.participation_history = deque(maxlen=100)  # Track last 100 rounds
-        self.gradient_history = deque(maxlen=10)        # Store recent gradients
+        self.gradient_history = deque(maxlen=5)        # Store recent gradients
         self.training_times = deque(maxlen=50)          # Training time history
         
         # Quality metrics
@@ -91,12 +93,11 @@ class EdgeDevice:
         """
         if self.local_dataloader is None or not self.is_active:
             return {"success": False, "reason": "No dataset or inactive device"}
-        
         start_time = time.time()
         
         # Initialize local model with global weights
         self.local_model.load_state_dict(global_model.state_dict())
-        
+
         # Move model to appropriate device
         if device == 'cuda' and torch.cuda.is_available():
             self.local_model = self.local_model.cuda()
@@ -105,11 +106,8 @@ class EdgeDevice:
             device = 'cpu'  # Ensure consistency
         
         self.local_model.train()
-        
         # Setup optimizer
-        #optimizer = torch.optim.SGD(self.local_model.parameters(),
-                                  #lr=learning_rate, momentum=0.9, weight_decay=1e-4)
-        optimizer = torch.optim.Adam(self.local_model.parameters(), lr=0.001)
+        optimizer = torch.optim.Adam(self.local_model.parameters(), lr=learning_rate)
         criterion = nn.CrossEntropyLoss()
         
         # Move criterion to same device
@@ -117,8 +115,8 @@ class EdgeDevice:
             criterion = criterion.cuda()
         
         total_loss = 0.0
+        total_correct = 0
         num_batches = 0
-        
         # Local training loop
         for epoch in range(epochs):
             for batch_idx, (data, target) in enumerate(self.local_dataloader):
@@ -134,23 +132,25 @@ class EdgeDevice:
                     output = self.local_model(data)
                 predictions = torch.argmax(output, dim=1)
                 correct = (predictions == target).float().sum()
+                total_correct += correct.detach().cpu().numpy()
                 loss = criterion(output, target)
                 loss.backward()
                 optimizer.step()
 
-                total_loss += loss.item()
+                total_loss += loss.detach().item()
                 num_batches += 1
 
-                if batch_idx % 20 == 0:
-                    print(f'({self.device_id}) Loss: {loss:.3f}, Accuracy {(correct / len(target)) * 100:.2f}%')
-        
+        if device == 'cuda':
+            torch.cuda.empty_cache()
+        gc.collect()
+
         training_time = time.time() - start_time
         self.training_times.append(training_time)
         
         # Calculate gradient for similarity computation (move to CPU for storage)
         local_gradient = self._compute_model_gradient(global_model, device)
         self.gradient_history.append(local_gradient)
-        
+
         # Update participation history
         self.participation_history.append(1)  # Participated in this round
         
@@ -163,7 +163,7 @@ class EdgeDevice:
             self.local_model = self.local_model.cpu()
 
         training_loss = total_loss / max(num_batches, 1)
-        print(f"Training Loss. {training_loss:.3f}")
+        # print(f"({self.device_id}) Training finished. Loss: {training_loss:.3f}, Accuracy: {total_correct*100.0 / (self.dataset_size * epochs):.3f}%")
         return {
             "success": True,
             "model_weights": self.local_model.state_dict(),
@@ -179,7 +179,7 @@ class EdgeDevice:
         delta_weights = {}
         for (name, local_param), (_, global_param) in zip(self.local_model.state_dict().items(),
                                                           global_model.state_dict().items()):
-            delta_weights[name] = (local_param - global_param).float()
+            delta_weights[name] = (local_param.detach().cpu() - global_param.detach().cpu()).float()
         return delta_weights
     
     def compute_gradient_similarity(self, other_device: 'EdgeDevice') -> float:
@@ -190,14 +190,17 @@ class EdgeDevice:
         """
         if len(self.gradient_history) == 0 or len(other_device.gradient_history) == 0:
             return 0.0
-        
+
+        def flatten_grads(grad):
+            return torch.cat([g.view(-1) for g in grad.values()])
+
         grad_i = self.gradient_history[-1]  # Most recent gradient
         grad_j = other_device.gradient_history[-1]
         
         # Cosine similarity
-        dot_product = torch.dot(grad_i.flatten(), grad_j.flatten())
-        norm_i = torch.norm(grad_i.flatten())
-        norm_j = torch.norm(grad_j.flatten())
+        dot_product = torch.dot(flatten_grads(grad_i), flatten_grads(grad_j))
+        norm_i = torch.norm(flatten_grads(grad_i))
+        norm_j = torch.norm(flatten_grads(grad_j))
         
         if norm_i == 0 or norm_j == 0:
             return 0.0
@@ -292,10 +295,22 @@ class EdgeDevice:
         """Simulate device failure or unavailability"""
         if np.random.random() < failure_probability:
             self.is_active = False
-            self.participation_history.append(0)  # Did not participate
+            self.participation_history.append(0)
         else:
             self.is_active = True
-    
+    def simulate_repair(self, repair_probability: float = 0.2):
+        """Simulate device repair to avoid complete outage"""
+        if self.is_active:
+            self.participation_history.append(1)
+            return True
+        elif np.random.random() < repair_probability:
+            self.is_active = True
+            self.participation_history.append(1)
+            return True
+        else:
+            self.is_active = False
+            return False
+
     def get_device_info(self) -> Dict[str, Any]:
         """Get comprehensive device information"""
         return {

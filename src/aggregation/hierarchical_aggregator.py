@@ -11,6 +11,8 @@ from collections import defaultdict, deque
 import time
 import copy
 
+from torch import Tensor
+
 from ..core.zone import Zone
 from ..core.device import EdgeDevice
 
@@ -32,14 +34,15 @@ class HierarchicalAggregator:
         self.staleness_penalty = config.staleness_penalty           # μ
         self.max_staleness = config.max_staleness                   # τ_max
         self.fairness_strength = config.fairness_strength           # α_fair
-        
+
         # Communication optimization
         self.compression_rate = config.compression_rate              # κ
         
         # Global model state
         self.global_model: Optional[nn.Module] = None
         self.global_weights: Optional[Dict[str, torch.Tensor]] = None
-        
+        self.zone_weights_cache: Optional[Dict[str, Dict[str, torch.Tensor]]] = {}
+
         # Zone weights and correlations
         self.zone_base_weights: Dict[str, float] = {}      # β_k^base
         self.zone_fair_weights: Dict[str, float] = {}      # β_k^fair
@@ -95,7 +98,6 @@ class HierarchicalAggregator:
         Implements Equation (13): β_k^base = Score_k / Σ Score_j
         """
         contribution_scores = self.compute_zone_contribution_scores(zones)
-        print(f"Contribution Scores: {contribution_scores}")
         self.zone_base_weights = contribution_scores.copy()
         return self.zone_base_weights
     
@@ -112,15 +114,12 @@ class HierarchicalAggregator:
         num_zones = len(base_weights)
         uniform_weight = 1.0 / num_zones
         fair_weights = {}
-        
         for zone_id, base_weight in base_weights.items():
             # Compute deviation from uniform distribution
             deviation_ratio = (uniform_weight - base_weight) / uniform_weight
-            
             # Apply fairness adjustment
             adjustment = 1.0 + self.fairness_strength * deviation_ratio
             fair_weight = base_weight * adjustment
-            
             fair_weights[zone_id] = max(0.01, fair_weight)  # Ensure minimum weight
         
         # Renormalize to ensure weights sum to 1
@@ -128,7 +127,7 @@ class HierarchicalAggregator:
         if total_weight > 0:
             for zone_id in fair_weights:
                 fair_weights[zone_id] /= total_weight
-        
+
         self.zone_fair_weights = fair_weights
         return fair_weights
     
@@ -150,7 +149,6 @@ class HierarchicalAggregator:
             else:
                 staleness_factor = np.exp(-self.staleness_penalty * staleness)
                 adjusted_weights[zone_id] = fair_weight * staleness_factor
-        
         # Renormalize weights
         total_weight = sum(adjusted_weights.values())
         if total_weight > 0:
@@ -178,7 +176,7 @@ class HierarchicalAggregator:
                 for param_name, global_param in self.global_weights.items():
                     if param_name in zone.aggregated_weights:
                         zone_param = zone.aggregated_weights[param_name]
-                        deviation[param_name] = zone_param - global_param
+                        deviation[param_name] = zone_param - global_param.cpu()
                     else:
                         deviation[param_name] = torch.zeros_like(global_param)
                 
@@ -208,44 +206,51 @@ class HierarchicalAggregator:
                                          (1 - self.momentum_eta) * new_correlation)
                     
                     self.spatial_correlations[correlation_key] = updated_correlation
-    
+
     def compute_spatial_regularization_term(self, zone_weights: Dict[str, Dict[str, torch.Tensor]],
-                                          zones: Dict[str, Zone]) -> torch.Tensor:
+                                          zones: Dict[str, Zone]) -> None | dict[str, Tensor]:
         """
         Compute spatial regularization term for inter-zone aggregation.
-        
+
         Implements the second term in Equation (11):
-        λ · Σ Σ ρ(z_k, z_j) ||w_k - w_j||²
+        λ · Σ Σ ρ(z_k, z_j) (w_k - w_j)
         """
         if not zone_weights or len(zone_weights) < 2:
-            return torch.tensor(0.0)
-        
-        regularization = torch.tensor(0.0)
+            return None
+
         zone_ids = list(zone_weights.keys())
-        
+        reg_term: dict[str, Tensor] = {}
+        print(f"Regularization for {len(zone_weights)} zones")
         for i, zone_i in enumerate(zone_ids):
             zone_i_obj = zones.get(zone_i)
             if not zone_i_obj or zone_i not in zone_weights:
                 continue
-            
+            print(f"Zone: {zone_i_obj}, Neighbors: {zone_i_obj.neighbors}")
+
             # Get spatial neighbors
             for zone_j in zone_i_obj.neighbors:
-                if zone_j in zone_weights and zone_j in zones:
+                if zone_j in self.zone_weights_cache and zone_j in zones:
                     correlation_key = (zone_i, zone_j) if zone_i <= zone_j else (zone_j, zone_i)
                     correlation = self.spatial_correlations.get(correlation_key, 0.0)
-                    
+
                     if correlation > 0:
                         # Compute model difference
-                        diff_squared = torch.tensor(0.0)
-                        
+                        reg = {}
                         for param_name in zone_weights[zone_i]:
-                            if param_name in zone_weights[zone_j]:
-                                param_diff = zone_weights[zone_i][param_name] - zone_weights[zone_j][param_name]
-                                diff_squared += torch.sum(param_diff ** 2)
-                        
-                        regularization += correlation * diff_squared
-        
-        return self.spatial_regularization * regularization
+                            if param_name in self.zone_weights_cache[zone_j]:
+                                if param_name not in reg:
+                                    reg[param_name] = torch.zeros_like(self.zone_weights_cache[zone_j][param_name])
+                                reg[param_name] += zone_weights[zone_i][param_name] - self.zone_weights_cache[zone_j][param_name]
+
+                        for param_name in reg:
+                            if param_name not in reg_term:
+                                reg_term[param_name] = torch.zeros_like(reg[param_name])
+                            reg_term[param_name] += correlation * reg[param_name]
+
+        for param_name in reg_term:
+            reg_term[param_name] *= self.spatial_regularization
+
+        return reg_term
     
     def intra_zone_aggregation(self, zones: Dict[str, Zone], 
                              device_updates: Dict[str, Dict[str, torch.Tensor]]) -> Dict[str, Dict[str, torch.Tensor]]:
@@ -274,7 +279,7 @@ class HierarchicalAggregator:
         
         return zone_aggregated_weights
     
-    def inter_zone_aggregation(self, zone_weights: Dict[str, Dict[str, torch.Tensor]], 
+    def inter_zone_aggregation(self, zone_weights: Dict[str, Dict[str, torch.Tensor]],
                              zones: Dict[str, Zone]) -> Dict[str, torch.Tensor]:
         """
         Perform inter-zone aggregation with spatial awareness.
@@ -286,14 +291,23 @@ class HierarchicalAggregator:
         
         # Compute zone aggregation weights
         base_weights = self.compute_zone_base_weights(zones)
+        print(f"Base Weights: {base_weights}")
         fair_weights = self.apply_fairness_adjustment(base_weights)
+        print(f"Fair Weights: {fair_weights}")
         final_weights = self.apply_staleness_penalty(fair_weights)
-        print(f"Fair Weights: {final_weights}")
+        print(f"Final Weights: {final_weights}")
         # Update spatial correlations
         self.update_spatial_correlations(zones)
         
         # Initialize global aggregated weights
-        first_zone_weights = next(iter(zone_weights.values()))
+        first_zone_weights = None
+        for zone_id in sorted(zone_weights.keys()):
+            if zone_weights[zone_id]:
+                first_zone_weights = zone_weights[zone_id]
+                break
+        if first_zone_weights is None:
+            return self.global_weights or {}
+
         global_aggregated = {}
         original_dtypes = {}  # Track original data types
         
@@ -309,8 +323,8 @@ class HierarchicalAggregator:
         total_weight = 0.0
         for zone_id, zone_weight_dict in zone_weights.items():
             if zone_id in final_weights and final_weights[zone_id] > 0:
+                self.zone_weights_cache[zone_id] = zone_weight_dict
                 weight = final_weights[zone_id]
-                
                 for param_name, param_tensor in zone_weight_dict.items():
                     if param_name in global_aggregated:
                         # Ensure tensor is float for aggregation operations
@@ -332,60 +346,40 @@ class HierarchicalAggregator:
         
         # Apply spatial regularization (conceptually - in practice, this influences convergence)
         # The regularization term is computed for monitoring but not directly added to weights
+        print(f"Reg Term: {zone_weights.keys()}")
         reg_term = self.compute_spatial_regularization_term(zone_weights, zones)
-        
-        self.global_weights = global_aggregated
-        
-        return global_aggregated
+        for k in self.global_weights.keys():
+            if self.global_weights[k].dtype.is_floating_point:
+                self.global_weights[k] = self.global_weights[k].cpu() + global_aggregated[k].cpu() + (reg_term[k].cpu() if reg_term else torch.zeros_like(self.global_weights[k].cpu()))
+
+        return self.global_weights
     
     def federated_aggregation_round(self, zones: Dict[str, Zone], 
-                                  device_updates: Dict[str, Dict[str, torch.Tensor]]) -> Tuple[Dict[str, torch.Tensor], Dict[str, Any]]:
+                                  num_device_updates: int, participating_zones: List[str], total_time, intra_time, inter_time, comm_cost) -> Dict[str, Any]:
         """
         Perform complete federated aggregation round.
         
         Implements Algorithm 2: ContinuumFL Aggregation Protocol.
         """
-        start_time = time.time()
-        round_stats = {
-            "round": self.current_round,
-            "participating_zones": 0,
-            "participating_devices": len(device_updates),
-            "aggregation_time": 0.0,
-            "communication_cost": 0.0
-        }
-        
-        # Phase 1: Local Training (already completed by devices)
-        
-        # Phase 2: Intra-Zone Aggregation
-        intra_start = time.time()
-        zone_weights = self.intra_zone_aggregation(zones, device_updates)
-        intra_time = time.time() - intra_start
-        
-        participating_zones = len(zone_weights)
-        round_stats["participating_zones"] = participating_zones
-        
-        if participating_zones == 0:
-            return self.global_weights or {}, round_stats
+        round_stats = {"round": self.current_round, "participating_zones": 0,
+                       "participating_devices": num_device_updates, "aggregation_time": 0.0, "communication_cost": 0.0}
+        self.current_round += 1
+
+        if len(participating_zones) == 0:
+            return round_stats
         
         # Update zone staleness
         for zone_id in zones:
-            if zone_id in zone_weights:
+            if zone_id in participating_zones:
                 self.zone_staleness[zone_id] = 0  # Reset staleness
             else:
                 self.zone_staleness[zone_id] += 1  # Increment staleness
-        
-        # Phase 3: Inter-Zone Aggregation
-        inter_start = time.time()
-        global_weights = self.inter_zone_aggregation(zone_weights, zones)
-        inter_time = time.time() - inter_start
-        
-        total_time = time.time() - start_time
         round_stats["aggregation_time"] = total_time
         round_stats["intra_zone_time"] = intra_time
         round_stats["inter_zone_time"] = inter_time
-        
+        round_stats["participating_zones"] = len(participating_zones)
+        round_stats["round"] = self.current_round
         # Estimate communication cost
-        comm_cost = self.estimate_communication_cost(device_updates, zone_weights)
         round_stats["communication_cost"] = comm_cost
         self.communication_costs.append(comm_cost)
         
@@ -397,30 +391,8 @@ class HierarchicalAggregator:
             "participating_zones": participating_zones,
             "staleness": dict(self.zone_staleness)
         })
-        
-        self.current_round += 1
-        
-        return global_weights, round_stats
-    
-    def estimate_communication_cost(self, device_updates: Dict[str, Dict[str, torch.Tensor]], 
-                                  zone_weights: Dict[str, Dict[str, torch.Tensor]]) -> float:
-        """Estimate communication cost in MB for this round"""
-        total_cost = 0.0
-        
-        # Device to zone communication (uplink)
-        for device_id, weights in device_updates.items():
-            device_size = sum(param.numel() * 4 for param in weights.values()) / (1024 * 1024)  # 4 bytes per float32
-            compressed_size = device_size * self.compression_rate  # Apply compression
-            total_cost += compressed_size
-        
-        # Zone to cloud communication (inter-zone)
-        for zone_id, weights in zone_weights.items():
-            zone_size = sum(param.numel() * 4 for param in weights.values()) / (1024 * 1024)
-            # Apply delta encoding (assume 50% reduction)
-            delta_encoded_size = zone_size * 0.5
-            total_cost += delta_encoded_size * 2  # Bidirectional
-        
-        return total_cost
+
+        return round_stats
     
     def get_aggregation_stats(self) -> Dict[str, Any]:
         """Get comprehensive aggregation statistics"""

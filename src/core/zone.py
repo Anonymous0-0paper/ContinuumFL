@@ -2,6 +2,8 @@
 Zone module for ContinuumFL framework.
 Implements spatial zones that aggregate edge devices with similar characteristics.
 """
+import os
+import random
 
 import numpy as np
 import torch
@@ -9,7 +11,39 @@ import torch.nn as nn
 from typing import Dict, List, Tuple, Optional, Any, Set
 from collections import defaultdict, deque
 import time
+
+from torch import Tensor
+
 from .device import EdgeDevice
+
+# ThreadFunc
+def run_training(args: dict[str, Any]):
+    device = args["device"]
+    global_model = args["model"]
+    epochs = args["epochs"]
+    learning_rate = args["learning_rate"]
+    comp_device = args["comp_device"]
+    enable_failure = args["enable_failure"]
+    device_failure_probability = args["device_failure_probability"]
+
+    failure = False
+    if enable_failure:
+        failure = device.simulate_failure(device_failure_probability)
+
+    # active device fails
+    if device.is_active and failure:
+        return None
+
+    # device active or failed device is repaired
+    if device.is_active or device.simulate_repair():
+        return device.local_train(
+            global_model,
+            epochs=epochs,
+            learning_rate=learning_rate,
+            device=comp_device), device.device_id
+
+    # device failed and was not repaired
+    return None
 
 class Zone:
     """
@@ -22,10 +56,12 @@ class Zone:
     - Zone-level objective F_k(w)
     """
     
-    def __init__(self, zone_id: str, edge_server_id: str):
+    def __init__(self, zone_id: str, edge_server_id: str, compression_rate: float, enable_compression: bool = False):
         self.zone_id = zone_id
         self.edge_server_id = edge_server_id
-        
+
+        self.is_active = True
+
         # Device management
         self.devices: Dict[str, EdgeDevice] = {}
         self.device_ids: Set[str] = set()
@@ -64,13 +100,20 @@ class Zone:
         # Failure handling
         self.is_operational = True
         self.backup_aggregators: List[str] = []
-        
+
+        self.compression_rate = compression_rate
+        self.enable_compression = enable_compression
+
+        self.sample_device_seed = 42
     def add_device(self, device: EdgeDevice):
         """Add a device to this zone"""
         self.devices[device.device_id] = device
         self.device_ids.add(device.device_id)
         device.zone_id = self.zone_id
-        
+        if device.resources.bandwidth >= self.allocated_bandwidth - self.allocated_bandwidth/10 and \
+                device.resources.compute_capacity >= self.compute_capacity - self.compute_capacity/10 and \
+                device.resources.memory_capacity >= self.memory_capacity:
+            self.backup_aggregators.append(device.device_id)
         # Update zone statistics
         self._update_zone_statistics()
     
@@ -80,6 +123,8 @@ class Zone:
             del self.devices[device_id]
             self.device_ids.discard(device_id)
             self._update_zone_statistics()
+            if device_id in self.backup_aggregators:
+                self.backup_aggregators.remove(device_id)
             return True
         return False
     
@@ -98,7 +143,102 @@ class Zone:
         # Update resource capacity
         self.compute_capacity = sum(device.resources.compute_capacity for device in self.devices.values())
         self.memory_capacity = sum(device.resources.memory_capacity for device in self.devices.values())
-    
+
+    def _sample_participating_devices(self) -> List[str]:
+        """Sample devices for participation in current round"""
+        # Simple participation strategy: random sampling with availability check
+        available_devices = [
+            device_id for device_id, device in self.devices.items()
+            if device.is_active and device.local_dataset
+        ]
+
+        if available_devices:
+            # Sample fraction of available devices
+            participation_rate = 0.7  # 70% participation rate
+            num_participants = max(1, int(participation_rate * len(available_devices)))
+
+            np.random.seed(self.sample_device_seed)
+            self.sample_device_seed += 1
+
+            participating = np.random.choice(
+                available_devices, size=num_participants, replace=False
+            ).tolist()
+
+            return participating
+
+        return []
+
+    def perform_local_training(self, args) -> tuple[str, Any, dict[str, list[str] | int | float]]:
+        """Perform local training on participating devices"""
+
+        participating_devices = self._sample_participating_devices()
+        comp_device = args["comp_device"]
+        global_model = args["model"]
+        learning_rate = args["learning_rate"]
+        epochs = args["epochs"]
+        device_participation = args["device_participation"]
+        enable_failure = args["enable_failure"]
+        device_failure_probability = args["device_failure_probability"]
+        device_updates = {}
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        if comp_device == 'cuda':
+            max_workers = len(participating_devices)
+        else:
+            max_workers = min(len(participating_devices), os.cpu_count())
+
+        device_args = [
+            {"device": self.devices[device_id], "model": global_model, "epochs": epochs,
+             "learning_rate": learning_rate,
+             "comp_device": comp_device,
+             "enable_failure": enable_failure,
+             "device_failure_probability": device_failure_probability} for device_id in participating_devices]
+        with ThreadPoolExecutor(max_workers=max(1, max_workers)) as executor:
+            futures = [executor.submit(run_training, args) for args in device_args]
+
+            for f in as_completed(futures):
+                res = f.result()
+                if res is None:
+                    continue
+
+                res_dict, device_id = res
+                if res_dict["success"]  and device_id in self.devices:
+                    device_updates[device_id] = res_dict["gradient"]
+                    device_participation[device_id] += 1
+
+                    # Update device reliability based on participation
+                    self.devices[device_id].participation_history.append(1)
+        intra_start = time.time()
+        aggregated_weights = self.intra_zone_aggregation(device_updates)
+        intra_time = time.time() - intra_start
+
+        comm_cost = self.estimate_communication_cost(device_updates, {self.zone_id: aggregated_weights})
+        return self.zone_id, aggregated_weights, {"participating_devices": participating_devices,
+                                                  "num_device_updates": len(device_updates),
+                                                  "intra_time": intra_time,
+                                                  "communication_cost": comm_cost}
+
+    def estimate_communication_cost(self, device_updates: Dict[str, Dict[str, torch.Tensor]],
+                                    zone_weights: Dict[str, Dict[str, torch.Tensor]]) -> float:
+        """Estimate communication cost in MB for this round"""
+        total_cost = 0.0
+        compression_rate = self.compression_rate if self.enable_compression else 1.0
+
+        # Device to zone communication (uplink)
+        for device_id, weights in device_updates.items():
+            device_size = sum(param.numel() * 4 for param in weights.values()) / (1024 * 1024)  # 4 bytes per float32
+            compressed_size = device_size * compression_rate
+            total_cost += compressed_size
+
+        # Zone to cloud communication (inter-zone)
+        for zone_id, weights in zone_weights.items():
+            zone_size = sum(param.numel() * 4 for param in weights.values()) / (1024 * 1024)
+            compressed_size = zone_size * compression_rate
+            # Apply delta encoding (assume 50% reduction)
+            total_cost += compressed_size
+
+        return total_cost
+
     def compute_intra_zone_weights(self) -> Dict[str, float]:
         """
         Compute aggregation weights for devices within the zone.
@@ -134,7 +274,8 @@ class Zone:
         self.intra_zone_weights = weights
         return weights
     
-    def intra_zone_aggregation(self, device_updates: Dict[str, Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
+    def intra_zone_aggregation(self, device_updates: Dict[str, Dict[str, torch.Tensor]]) -> dict[Any, Any] | tuple[
+        dict[Any, Any], dict[Any, Any]]:
         """
         Perform intra-zone aggregation of device updates.
         
@@ -185,19 +326,21 @@ class Zone:
             if original_dtypes[param_name] != torch.float32:
                 aggregated_weights[param_name] = aggregated_weights[param_name].to(original_dtypes[param_name])
         
-        # Apply gradient compression (temporarily disabled) TODO Fix Compression and replace Weights by Delta-Weights
-        # compressed_weights = self._apply_gradient_compression(aggregated_weights)
-        
-        self.aggregated_weights = aggregated_weights # TODO use compressed weights
+        # Apply gradient compression
+        if self.enable_compression:
+            compressed_weights = self._apply_gradient_compression(aggregated_weights, compression_rate=self.compression_rate)
+            self.aggregated_weights = compressed_weights
+        else:
+            self.aggregated_weights = aggregated_weights
         
         # Track aggregation time
         aggregation_time = time.time() - start_time
         self.aggregation_times.append(aggregation_time)
         
-        return aggregated_weights # TODO return compressed weights
+        return self.aggregated_weights
     
     def _apply_gradient_compression(self, weights: Dict[str, torch.Tensor], 
-                                  compression_rate: float = 0.1) -> Dict[str, torch.Tensor]:
+                                  compression_rate: float = 0.1) -> Dict[str, Tensor]:
         """Apply top-k compression to aggregated weights"""
         compressed_weights = {}
         
@@ -230,7 +373,6 @@ class Zone:
         num_devices = len([d for d in self.devices.values() if d.is_active])
         avg_dataset_size = self.total_dataset_size / max(num_devices, 1)
         data_contribution = num_devices * avg_dataset_size
-        print(f"({self.zone_id}) Num Devices {num_devices}, avg dataset size {avg_dataset_size:.2f}")
         # Gradient consistency component
         gradient_variances = []
         for device in self.devices.values():
@@ -242,9 +384,9 @@ class Zone:
         
         if gradient_variances:
             gradient_variance = np.var(gradient_variances)
-            consistency_score = np.exp(-gradient_variance)
+            consistency_score = np.exp(-0.0001 * np.float32(gradient_variance))
         else:
-            consistency_score = 1.0
+            consistency_score = 0.0
         
         # Validation accuracy component (placeholder)
         # In practice, this would be computed on a validation set
@@ -290,7 +432,19 @@ class Zone:
             if other_zone_id != self.zone_id:
                 correlation = self.compute_spatial_correlation(other_zone)
                 self.spatial_correlations[other_zone_id] = correlation
-    
+
+    def simulate_failure(self, failure_probability):
+        if self.edge_server_id == 'cloud_coordinator':
+            return False
+
+        rng = random.random()
+
+        if rng < failure_probability:
+            self.is_active = False
+            return True
+
+        return False
+
     def identify_neighbor_zones(self, zones: Dict[str, 'Zone'], 
                               correlation_threshold: float = 0.5):
         """Identify neighboring zones based on spatial correlation"""

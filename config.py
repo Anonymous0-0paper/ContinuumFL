@@ -19,13 +19,18 @@ class ContinuumFLConfig:
             'network': 0.2     # ω3 - network similarity weight
         }
         self.similarity_threshold = 0.6  # θ - clustering threshold
-        self.min_zone_size = 3           # n_min
-        self.max_zone_size = 10          # n_max
+        self.min_zone_size = 4           # n_min
+        self.max_zone_size = 15          # n_max
         self.distance_scaling = 10.0     # σ - distance scaling parameter
         self.stability_tradeoff = 0.3    # γ - stability vs optimality
         self.stability_threshold = 0.1   # θ_stability
         self.stability_window = 10       # W - sliding window size
-        
+
+        # Failure Settings
+        self.device_failure_probability = 0.05
+        self.zone_failure_probability = 0.02
+        self.enable_failure = False
+
         # Federated Learning Parameters
         self.num_rounds = 200            # T - total training rounds
         self.local_epochs = 5            # τ_local - local training epochs
@@ -37,7 +42,7 @@ class ContinuumFLConfig:
         # Aggregation Parameters
         self.spatial_regularization = 0.1  # λ - spatial regularization
         self.momentum_eta = 0.9             # η - momentum for correlation update
-        self.staleness_penalty = 0.1       # μ - staleness penalty
+        self.staleness_penalty = 0.01       # μ - staleness penalty
         self.max_staleness = 5             # τ_max - maximum staleness
         self.fairness_strength = 0.5       # α_fair - fairness enforcement
         
@@ -61,10 +66,10 @@ class ContinuumFLConfig:
         self.dataset_name = 'cifar100'   # Options: 'cifar100', 'femnist', 'shakespeare'
         self.max_samples = 100            # Limit Dataset-Size (use -1 for full dataset)
         self.data_distribution = 'dirichlet'  # Data distribution type
-        self.intra_zone_alpha = 1000      # Dirichlet α for intra-zone
-        self.inter_zone_alpha = 1000      # Dirichlet α for inter-zone
+        self.intra_zone_alpha = 10       # Dirichlet α for intra-zone
+        self.inter_zone_alpha = 0.3      # Dirichlet α for inter-zone
         self.train_test_split = 0.8
-        
+        self.shakespeare_num_speakers = 35
         # Model Configuration
         self.model_configs = {
             'cifar100': {
@@ -79,7 +84,7 @@ class ContinuumFLConfig:
             },
             'shakespeare': {
                 'model_type': 'lstm',
-                'vocab_size': 80,
+                'vocab_size': 79,
                 'embedding_dim': 64,
                 'hidden_dim': 256,
                 'num_layers': 3

@@ -174,7 +174,7 @@ class FEMNISTNet(nn.Module):
 class ShakespeareLSTM(nn.Module):
     """LSTM model for Shakespeare next-character prediction"""
     
-    def __init__(self, vocab_size: int = 80, embedding_dim: int = 64, 
+    def __init__(self, vocab_size: int = 79, embedding_dim: int = 64,
                  hidden_dim: int = 256, num_layers: int = 3, dropout: float = 0.2):
         super(ShakespeareLSTM, self).__init__()
         
@@ -272,7 +272,7 @@ class ModelFactory:
         
         elif dataset_name == 'shakespeare':
             return ShakespeareLSTM(
-                vocab_size=60,
+                vocab_size=79,
                 embedding_dim=model_config.get('embedding_dim', 64),
                 hidden_dim=model_config.get('hidden_dim', 256),
                 num_layers=model_config.get('num_layers', 3)
