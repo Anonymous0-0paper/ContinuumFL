@@ -11,6 +11,7 @@ import networkx as nx
 from sklearn.cluster import KMeans
 import time
 
+from src.core.device import EdgeDevice
 from .device import EdgeDevice
 from .zone import Zone
 
@@ -418,7 +419,7 @@ class ZoneDiscovery:
         
         # Check each device for potential reassignment
         for device in devices:
-            if not device.is_active or not device.zone_id:
+            if not device.is_active or not device.zone_id or len(zones[device.zone_id].devices) <= self.min_zone_size:
                 continue
             
             current_zone_id = device.zone_id
@@ -431,16 +432,18 @@ class ZoneDiscovery:
 
             # Evaluate alternative zones
             for candidate_zone_id, candidate_zone in zones.items():
+                if not candidate_zone.is_active or candidate_zone_id == 'standalone_devices':
+                    continue
                 if candidate_zone_id != current_zone_id:
                     reassignment_cost = self.compute_reassignment_cost(
                         device, current_zone_id, candidate_zone_id, zones
                     )
-                    if reassignment_cost < min_reassignment_cost:
+                    if reassignment_cost < min_reassignment_cost and len(candidate_zone.devices) < self.max_zone_size:
                         min_reassignment_cost = reassignment_cost
                         best_candidate = candidate_zone_id
 
-            should_reassign = min_reassignment_cost < staying_cost - self.stability_threshold
-            if should_reassign:
+            should_reassign = min_reassignment_cost < staying_cost - self.stability_threshold if device.zone_id != 'standalone_devices' else True
+            if should_reassign and best_candidate is not None:
                 reassignments.append((device.device_id, current_zone_id, best_candidate))
         
         # Apply reassignments
@@ -463,14 +466,19 @@ class ZoneDiscovery:
         return zones
 
     def handle_zone_failure(self, zoneless_devices: Dict[str, EdgeDevice],
-                             zones: Dict[str, Zone], failed_zones: Dict[str, Zone]) -> Dict[str, Zone]:
+                             zones: Dict[str, Zone], failed_zones: Dict[str, Zone]) -> dict[str, EdgeDevice]:
         """
         """
         reassignments = []
 
+        print(f"----------------------")
+        print(f"Handling Zone Failure:")
+
         # Check each device for potential reassignment
+        saved_devices = {}
+        reassigned_devices = {}
         for device_id, device in zoneless_devices.items():
-            if not device.is_active or not device.zone_id:
+            if not device.is_active or not device.zone_id or device_id in saved_devices:
                 continue
 
             current_zone_id = device.zone_id
@@ -480,19 +488,30 @@ class ZoneDiscovery:
 
             # Evaluate alternative zones
             for candidate_zone_id, candidate_zone in zones.items():
+                if not candidate_zone.is_active or candidate_zone_id == 'standalone_devices':
+                    continue
+                if candidate_zone_id not in reassigned_devices:
+                    reassigned_devices[candidate_zone_id] = 0
                 if candidate_zone_id != current_zone_id:
                     reassignment_cost = self.compute_reassignment_cost(
                         device, current_zone_id, candidate_zone_id, zones
                     )
-                    if reassignment_cost < min_reassignment_cost and len(candidate_zone.devices) > self.max_zone_size:
+                    print(f"({device_id} -> {candidate_zone_id}) reassign: {reassignment_cost} < {min_reassignment_cost} and {len(candidate_zone.devices) + reassigned_devices[candidate_zone_id]} < {self.max_zone_size} = {reassignment_cost < min_reassignment_cost and (len(candidate_zone.devices) + reassigned_devices[candidate_zone_id]) < self.max_zone_size}")
+                    if reassignment_cost < min_reassignment_cost and (len(candidate_zone.devices) + reassigned_devices[candidate_zone_id]) < self.max_zone_size:
                         min_reassignment_cost = reassignment_cost
                         best_candidate = candidate_zone_id
+                        print(f"Found best candidate zone: {zones[candidate_zone_id]}")
             if best_candidate:
                 reassignments.append((device.device_id, current_zone_id, best_candidate))
-                del zoneless_devices[device_id]
+                reassigned_devices[best_candidate] += 1
+                print(f"Removing device: {device.device_id}")
+                saved_devices[device.device_id] = device
+        for device_id, device in saved_devices.items():
+            del zoneless_devices[device_id]
 
+        print(f"Zoneless_Devices: {zoneless_devices}")
         # Apply reassignments
-        print(f"Reassignments: {reassignments}")
+        print(f"Found Reassignments for Zoneless Devices: {reassignments}")
         for device_id, from_zone_id, to_zone_id in reassignments:
             print(f"{device_id} is in {from_zone_id} but should be in {to_zone_id}.\n"
                     f"{from_zone_id}: {zones[from_zone_id].devices}\n"
@@ -502,30 +521,22 @@ class ZoneDiscovery:
                 zones[from_zone_id].remove_device(device_id)
                 zones[to_zone_id].add_device(device)
 
+        print(f"Leftover Devices: {zoneless_devices}")
         # If Leftovers: Promote Device to Zone Aggregator
-        for zone_id, zone in failed_zones:
+        for zone_id, zone in failed_zones.items():
             if len(zone.devices) >= self.min_zone_size:
-                zone_reactivated = False
                 for backup_aggregator in zone.backup_aggregators:
-                    if zoneless_devices[backup_aggregator].is_active:
-                        # TODO Reactivate Zone (add attribute to track activeness for zone)
-                        zone_reactivated = True
+                    if backup_aggregator in zoneless_devices and zoneless_devices[backup_aggregator].is_active:
+                        print(f"Found backup for {zone_id}: {backup_aggregator}")
+                        zone.is_active = True
                         zone_id = zoneless_devices[backup_aggregator].zone_id
                         for device_id, _ in failed_zones[zone_id].devices.items():
                             del zoneless_devices[device_id]
-
+        for zone_id, zone in failed_zones.items():
+            if not zone.is_active:
+                del zones[zone_id]
         # If Leftovers: Devices must talk to Cloud Coordinator directly
-
-
-
-
-        # Update correlations if reassignments occurred
-        if reassignments:
-            for zone in zones.values():
-                zone.update_spatial_correlations(zones)
-                zone.identify_neighbor_zones(zones, correlation_threshold=self.correlation_threshold)
-
-        return zones
+        return zoneless_devices
 
     def get_discovery_stats(self) -> Dict[str, Any]:
         """Get statistics about the zone discovery process"""
