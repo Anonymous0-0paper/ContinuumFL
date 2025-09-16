@@ -25,7 +25,12 @@ class ContinuumFLConfig:
         self.stability_tradeoff = 0.3    # γ - stability vs optimality
         self.stability_threshold = 0.1   # θ_stability
         self.stability_window = 10       # W - sliding window size
-        
+
+        # Failure Settings
+        self.device_failure_probability = 0.05
+        self.zone_failure_probability = 0.02
+        self.enable_failure = False
+
         # Federated Learning Parameters
         self.num_rounds = 200            # T - total training rounds
         self.local_epochs = 5            # τ_local - local training epochs

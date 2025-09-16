@@ -3,6 +3,7 @@ Zone module for ContinuumFL framework.
 Implements spatial zones that aggregate edge devices with similar characteristics.
 """
 import os
+import random
 
 import numpy as np
 import torch
@@ -23,10 +24,11 @@ def run_training(args: dict[str, Any]):
     learning_rate = args["learning_rate"]
     comp_device = args["comp_device"]
     enable_failure = args["enable_failure"]
+    device_failure_probability = args["device_failure_probability"]
 
     failure = False
     if enable_failure:
-        failure = device.simulate_failure()
+        failure = device.simulate_failure(device_failure_probability)
 
     # active device fails
     if device.is_active and failure:
@@ -57,7 +59,9 @@ class Zone:
     def __init__(self, zone_id: str, edge_server_id: str, compression_rate: float, enable_compression: bool = False):
         self.zone_id = zone_id
         self.edge_server_id = edge_server_id
-        
+
+        self.is_active = True
+
         # Device management
         self.devices: Dict[str, EdgeDevice] = {}
         self.device_ids: Set[str] = set()
@@ -106,7 +110,10 @@ class Zone:
         self.devices[device.device_id] = device
         self.device_ids.add(device.device_id)
         device.zone_id = self.zone_id
-        
+        if device.resources.bandwidth >= self.allocated_bandwidth - self.allocated_bandwidth/10 and \
+                device.resources.compute_capacity >= self.compute_capacity - self.compute_capacity/10 and \
+                device.resources.memory_capacity >= self.memory_capacity:
+            self.backup_aggregators.append(device.device_id)
         # Update zone statistics
         self._update_zone_statistics()
     
@@ -116,6 +123,8 @@ class Zone:
             del self.devices[device_id]
             self.device_ids.discard(device_id)
             self._update_zone_statistics()
+            if device_id in self.backup_aggregators:
+                self.backup_aggregators.remove(device_id)
             return True
         return False
     
@@ -169,6 +178,7 @@ class Zone:
         epochs = args["epochs"]
         device_participation = args["device_participation"]
         enable_failure = args["enable_failure"]
+        device_failure_probability = args["device_failure_probability"]
         device_updates = {}
 
         from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -181,7 +191,8 @@ class Zone:
             {"device": self.devices[device_id], "model": global_model, "epochs": epochs,
              "learning_rate": learning_rate,
              "comp_device": comp_device,
-             "enable_failure": enable_failure} for device_id in participating_devices]
+             "enable_failure": enable_failure,
+             "device_failure_probability": device_failure_probability} for device_id in participating_devices]
         with ThreadPoolExecutor(max_workers=max(1, max_workers)) as executor:
             futures = [executor.submit(run_training, args) for args in device_args]
 
@@ -421,7 +432,19 @@ class Zone:
             if other_zone_id != self.zone_id:
                 correlation = self.compute_spatial_correlation(other_zone)
                 self.spatial_correlations[other_zone_id] = correlation
-    
+
+    def simulate_failure(self, failure_probability):
+        if self.edge_server_id == 'cloud_coordinator':
+            return False
+
+        rng = random.random()
+
+        if rng < failure_probability:
+            self.is_active = False
+            return True
+
+        return False
+
     def identify_neighbor_zones(self, zones: Dict[str, 'Zone'], 
                               correlation_threshold: float = 0.5):
         """Identify neighboring zones based on spatial correlation"""

@@ -78,6 +78,11 @@ def parse_arguments():
     # Device Settings
     parser.add_argument('--enable_failure', action='store_true', default=False,
                         help='Enable simulation of failure for devices')
+    parser.add_argument('--device_failure_probability', type=float, default=0.05,
+                        help='Probability of device failure')
+    parser.add_argument('--zone_failure_probability', type=float, default=0.02,
+                        help='Probability of zone failure')
+
     parser.add_argument('--shakespeare_num_speakers', type=int, default=35,
                         help='Set number of heterogeneous text sources (only available for shakespear dataset)')
     # Experiment options
@@ -189,6 +194,9 @@ def setup_configuration(args) -> ContinuumFLConfig:
 
     # Device Settings
     config.enable_failure = args.enable_failure
+    config.zone_failure_probability = args.zone_failure_probability
+    config.device_failure_probability = args.device_failure_probability
+
     config.shakespeare_num_speakers = args.shakespeare_num_speakers
     # System options - GPU checking will be done separately
     config.device = args.device

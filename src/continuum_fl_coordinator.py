@@ -48,6 +48,8 @@ class ContinuumFLCoordinator:
         
         # System state
         self.devices: Dict[str, EdgeDevice] = {}
+        self.standalone_devices: Dict[str, EdgeDevice] = {}
+        self.standalone_device_zone: Zone = None
         self.zones: Dict[str, Zone] = {}
         self.global_model: Optional[nn.Module] = None
 
@@ -56,6 +58,8 @@ class ContinuumFLCoordinator:
 
         # Device Settings
         self.enable_failure = config.enable_failure
+        self.zone_failure_probability = config.zone_failure_probability
+        self.device_failure_probability = config.device_failure_probability
 
         # Training state
         self.current_round = 0
@@ -277,6 +281,7 @@ class ContinuumFLCoordinator:
                     "epochs": self.config.local_epochs,
                     "device_participation": self.device_participation,
                     "enable_failure": self.enable_failure,
+                    "device_failure_probability": self.device_failure_probability
                 }
 
                 # 2. Start training in all zones
@@ -354,11 +359,40 @@ class ContinuumFLCoordinator:
                     if (round_num + 1) % self.config.save_interval == 0:
                         self._save_checkpoint(round_num + 1)
 
+                    # Restart training for aggregated zones
+                    failed_zones = {}
+                    for zone_id in zone_weights.keys():
+                        print("Simulating Zone Failure")
+                        is_failure = self.zones[zone_id].simulate_failure(self.zone_failure_probability) if self.enable_failure else False
+                        if is_failure:
+                            failed_zones[zone_id] = self.zones[zone_id]
+                    print(f"Failed Zones: {failed_zones}")
+                    if failed_zones:
+                        zoneless_devices = {}
+                        for _, failed_zone in failed_zones.items():
+                            for device_id, device in failed_zone.devices.items():
+                                zoneless_devices[device_id] = device
+
+                        print(f"Zoneless_Devices: {zoneless_devices}")
+                        standalone_devices = self.zone_discovery.handle_zone_failure(zoneless_devices=zoneless_devices, zones=self.zones, failed_zones=failed_zones)
+                        print(f"------------------------------")
+                        print(f"Standalone Devices: {standalone_devices}")
+                        if self.standalone_device_zone is None:
+                            self.standalone_device_zone = Zone('standalone_devices', 'cloud_coordinator', self.config.compression_rate, self.config.enable_compression)
+                            self.zones[self.standalone_device_zone.zone_id] = self.standalone_device_zone
+                            print(f"Standalone Device Zone: {self.standalone_device_zone}")
+                        for device_id, device in standalone_devices.items():
+                            self.standalone_devices[device_id] = device
+                            self.standalone_device_zone.add_device(device)
+                            print(f"Added Device to standalone device zone: {device}")
+                    if self.standalone_device_zone and self.standalone_device_zone.devices:
+                        futures.append(executor.submit(self.standalone_device_zone.perform_local_training, args))
+                    for zone_id, zone in self.zones.items():
+                        if zone.is_active and zone_id != 'standalone_devices':
+                            futures.append(executor.submit(self.zones[zone_id].perform_local_training, args))
                     self.current_round += 1
                     round_num = self.current_round
-                    # Restart training for aggregated zones
-                    for zone_id in zone_weights.keys():
-                        futures.append(executor.submit(self.zones[zone_id].perform_local_training, args))
+
                 executor.shutdown(wait=False)
         
         except KeyboardInterrupt:
