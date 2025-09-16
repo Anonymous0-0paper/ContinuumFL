@@ -55,6 +55,10 @@ class FederatedDataset:
 
         # Dataset size limitation
         self.max_samples = config.max_samples
+        self.shakespeare_num_speakers = config.shakespeare_num_speakers
+        # Shakespeare Specific
+        self.train_indices = []
+        self.test_indices = []
 
         # Create data directory
         os.makedirs(data_dir, exist_ok=True)
@@ -241,29 +245,23 @@ class FederatedDataset:
         return CustomDataset(data_dict)
 
     class ShakespeareDataset(torch.utils.data.Dataset):
-        def __init__(self, dataset):
-            self.vocab = [' ', '!', '"', '&', "'", '(', ')', ',', '-', '.', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '?', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '}', '>', '<']
+        def __init__(self, dataset, vocab):
+            self.vocab = vocab
             self.stoi = {ch: i for i, ch in enumerate(self.vocab)}
             self.itos = {i: ch for i, ch in enumerate(self.vocab)}
-            print(f"1, len(vocab) = {len(self.vocab)}")
             max_len = max(len(seq) for seq in dataset["x"])
             n_samples = len(dataset["x"])
-            print("2")
 
             sequences_np = np.zeros((n_samples, max_len), dtype=np.int32)
-            print("3")
 
             for i, seq in enumerate(dataset["x"]):
                 sequences_np[i, :len(seq)] = [self.stoi[c] for c in seq]
-            print("4")
 
             self.sequences = sequences_np
-            self.targets = np.array([self.stoi[y] for y in dataset["y"]], dtype=np.int32)
-            print("5")
+            self.targets = np.array([self.stoi[y] for y in dataset["y"]], dtype=np.int64)
 
             self.num_classes = len(self.vocab)
             self.classes = self.vocab
-            print("6")
 
         def __len__(self):
             return len(self.sequences)
@@ -281,13 +279,19 @@ class FederatedDataset:
         # Check if already processed
         if os.path.exists(os.path.join(shakespeare_path, 'train.pkl')):
             print("Loading existing Shakespeare data...")
+            vocab = None
+            with open(os.path.join(shakespeare_path, 'vocab.pkl'), 'rb') as f:
+                vocab = pickle.load(f)
+            with open(os.path.join(shakespeare_path, 'train_indices.pkl'), 'rb') as f:
+                self.train_indices = pickle.load(f)
             with open(os.path.join(shakespeare_path, 'train.pkl'), 'rb') as f:
                 train_dataset = pickle.load(f)
-                self.train_data = self.ShakespeareDataset(train_dataset)
-
+                self.train_data = self.ShakespeareDataset(train_dataset, vocab)
+            with open(os.path.join(shakespeare_path, 'test_indices.pkl'), 'rb') as f:
+                self.test_indices = pickle.load(f)
             with open(os.path.join(shakespeare_path, 'test.pkl'), 'rb') as f:
                 test_data = pickle.load(f)
-                self.test_data = self.ShakespeareDataset(test_data)
+                self.test_data = self.ShakespeareDataset(test_data, vocab)
             return
 
         # Download and process Shakespeare dataset
@@ -301,11 +305,21 @@ class FederatedDataset:
         download_config = DownloadConfig(cache_dir=shakespeare_path)
         dataset = load_dataset("flwrlabs/shakespeare", download_config=download_config)["train"]
 
+        chars = set()
+        for batch in dataset.iter(batch_size=10000):
+            for text in batch['x']:
+                chars.update(text)
+
+        vocab = sorted(list(chars))
+        print(f"Vocab: {len(vocab)}: {vocab}")
+        max_speakers = self.shakespeare_num_speakers
+        unique_speakers = dataset.unique("character_id")[:max_speakers]
+
         speaker_indices = defaultdict(list)
         for i, speaker in enumerate(dataset["character_id"]):
-            speaker_indices[speaker].append(i)
+            if speaker in unique_speakers:
+                speaker_indices[speaker].append(i)
 
-        print(f"Dataset-Size: {len(dataset)}")
         train_indices = []
         test_indices = []
         random.seed(42)
@@ -318,20 +332,27 @@ class FederatedDataset:
             else:
                 train_indices.extend(indices)
 
+        self.train_indices = train_indices
+        self.test_indices = test_indices
+
         # Concatenate all speaker splits into one Dataset
-        train_dataset = dataset.select(train_indices)
-        print(f"Trainset-Size: {len(train_dataset)}")
-        test_dataset = dataset.select(test_indices)
-        print(f"Test-Size: {len(test_dataset)}")
+        train_dataset = dataset.select(self.train_indices)
+        test_dataset = dataset.select(self.test_indices)
 
         # Save raw train/test texts
+        with open(os.path.join(shakespeare_path, 'vocab.pkl'), 'wb') as f:
+            pickle.dump(vocab, f)
+        with open(os.path.join(shakespeare_path, 'train_indices.pkl'), 'wb') as f:
+            pickle.dump(train_indices, f)
         with open(os.path.join(shakespeare_path, 'train.pkl'), 'wb') as f:
             pickle.dump(train_dataset, f)
+        with open(os.path.join(shakespeare_path, 'test_indices.pkl'), 'wb') as f:
+            pickle.dump(test_indices, f)
         with open(os.path.join(shakespeare_path, 'test.pkl'), 'wb') as f:
             pickle.dump(test_dataset, f)
 
-        self.train_data = self.ShakespeareDataset(train_dataset)
-        self.test_data = self.ShakespeareDataset(test_dataset)
+        self.train_data = self.ShakespeareDataset(train_dataset, vocab)
+        self.test_data = self.ShakespeareDataset(test_dataset, vocab)
 
         print(f"Shakespeare processed: {len(self.train_data)} train, {len(self.test_data)} test samples")
     
@@ -509,6 +530,17 @@ class FederatedDataset:
                 flattened_train_indices_per_device = [x for sublist in device_train_indices[device_id].values() for x in sublist]
                 flattened_test_indices_per_device = [x for sublist in device_test_indices[device_id].values() for x in
                                                      sublist]
+
+                if self.dataset_name.lower() == 'shakespeare':
+                    train_idx_map = {old_idx: new_idx for new_idx, old_idx in enumerate(self.train_indices)}
+                    test_idx_map = {old_idx: new_idx for new_idx, old_idx in enumerate(self.test_indices)}
+
+                    flattened_train_indices_per_device = [train_idx_map[idx] for idx in
+                                                          flattened_train_indices_per_device if idx in train_idx_map]
+                    flattened_test_indices_per_device = [test_idx_map[idx] for idx in flattened_test_indices_per_device
+                                                         if idx in test_idx_map]
+
+
                 train_subset = Subset(self.train_data, flattened_train_indices_per_device) if flattened_train_indices_per_device else None
                 test_subset = Subset(self.test_data, flattened_test_indices_per_device) if flattened_test_indices_per_device else None
                 device_datasets[device_id] = (train_subset, test_subset)

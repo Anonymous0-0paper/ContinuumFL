@@ -64,7 +64,7 @@ class ContinuumFLConfig:
         self.intra_zone_alpha = 10       # Dirichlet α for intra-zone
         self.inter_zone_alpha = 0.3      # Dirichlet α for inter-zone
         self.train_test_split = 0.8
-        
+        self.shakespeare_num_speakers = 35
         # Model Configuration
         self.model_configs = {
             'cifar100': {
@@ -79,7 +79,7 @@ class ContinuumFLConfig:
             },
             'shakespeare': {
                 'model_type': 'lstm',
-                'vocab_size': 80,
+                'vocab_size': 79,
                 'embedding_dim': 64,
                 'hidden_dim': 256,
                 'num_layers': 3
