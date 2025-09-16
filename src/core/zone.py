@@ -222,9 +222,9 @@ class Zone:
         # Zone to cloud communication (inter-zone)
         for zone_id, weights in zone_weights.items():
             zone_size = sum(param.numel() * 4 for param in weights.values()) / (1024 * 1024)
+            compressed_size = zone_size * compression_rate
             # Apply delta encoding (assume 50% reduction)
-            delta_encoded_size = zone_size * 0.5
-            total_cost += delta_encoded_size * 2  # Bidirectional
+            total_cost += compressed_size
 
         return total_cost
 
