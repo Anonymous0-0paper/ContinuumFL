@@ -229,7 +229,7 @@ class ContinuumFLCoordinator:
         
         # Distribute data
         device_datasets = self.dataset.distribute_data_to_devices(
-            list(self.devices.keys()), zone_device_mapping
+            zone_device_mapping
         )
 
         zone_dataset_sizes = {}
