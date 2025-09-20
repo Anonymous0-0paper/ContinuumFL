@@ -1,0 +1,77 @@
+{
+  "total_rounds": 201,
+  "total_training_time": 36005.896208524704,
+  "final_accuracy": 0.365,
+  "final_loss": 7.159017813472321,
+  "average_round_time": 180.01553859472276,
+  "total_communication_cost": 39411.055908203125,
+  "device_participation_stats": {
+    "device_20": 132,
+    "device_4": 138,
+    "device_22": 125,
+    "device_18": 122,
+    "device_21": 114,
+    "device_27": 111,
+    "device_29": 125,
+    "device_15": 111,
+    "device_16": 120,
+    "device_1": 133,
+    "device_0": 134,
+    "device_3": 119,
+    "device_10": 111,
+    "device_17": 122,
+    "device_5": 115,
+    "device_19": 119,
+    "device_12": 116,
+    "device_6": 116,
+    "device_24": 113,
+    "device_14": 104,
+    "device_23": 138,
+    "device_7": 112,
+    "device_26": 118,
+    "device_9": 103,
+    "device_13": 109,
+    "device_28": 134,
+    "device_11": 128,
+    "device_2": 121,
+    "device_25": 119,
+    "device_8": 118
+  },
+  "convergence_rounds": 190,
+  "zone_discovery_stats": {
+    "rounds_completed": 1,
+    "average_stability": 1.0,
+    "total_migrations": 0,
+    "migration_history_size": 0
+  },
+  "aggregation_stats": {
+    "total_rounds": 200,
+    "zone_participation_rates": {
+      "zone_0": 1.0,
+      "zone_1": 1.0,
+      "zone_2": 1.0,
+      "zone_3": 1.0,
+      "zone_4": 1.0
+    },
+    "average_communication_cost_mb": 197.05527954101564,
+    "spatial_correlations": {
+      "average": 0.9934151348530694,
+      "maximum": 0.9999999992944921,
+      "total_pairs": 15
+    },
+    "staleness_distribution": {
+      "zone_0": 0,
+      "zone_1": 0,
+      "zone_2": 0,
+      "zone_3": 0,
+      "zone_4": 0
+    },
+    "current_zone_weights": {
+      "zone_0": 0.7766012649865708,
+      "zone_1": 0.04757792653105882,
+      "zone_2": 0.04757792653105882,
+      "zone_3": 0.08066495542025258,
+      "zone_4": 0.04757792653105882
+    }
+  }
+}

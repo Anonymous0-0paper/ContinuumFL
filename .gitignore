@@ -13,10 +13,13 @@
 *~
 
 **/__pycache__/
-results/
+/results/
 saved_results/
 logs/
 data/
+
+# any model
+*.pt
 
 *.bak
 # Environment files (containing secrets, API keys, credentials)

@@ -1,0 +1,196 @@
+{
+  "experiment_config": {
+    "num_devices": 30,
+    "num_zones": 5,
+    "num_edge_servers": 20,
+    "region_size": [
+      100.0,
+      100.0
+    ],
+    "similarity_weights": {
+      "spatial": 0.4,
+      "data": 0.4,
+      "network": 0.2
+    },
+    "similarity_threshold": 0.6,
+    "min_zone_size": 4,
+    "max_zone_size": 7,
+    "distance_scaling": 10.0,
+    "stability_tradeoff": 0.3,
+    "stability_threshold": 0.1,
+    "stability_window": 10,
+    "num_rounds": 200,
+    "local_epochs": 5,
+    "learning_rate": 0.001,
+    "batch_size": 32,
+    "momentum": 0.9,
+    "weight_decay": 0.0001,
+    "spatial_regularization": 0.1,
+    "momentum_eta": 0.9,
+    "staleness_penalty": 0.01,
+    "max_staleness": 5,
+    "fairness_strength": 0.5,
+    "compression_rate": 0.6,
+    "quantization_bits": 8,
+    "cache_threshold": 0.95,
+    "total_bandwidth": 1000.0,
+    "deadline_constraint": 60,
+    "device_compute_range": [
+      1.0,
+      10.0
+    ],
+    "device_memory_range": [
+      1.0,
+      8.0
+    ],
+    "device_bandwidth_range": [
+      10.0,
+      100.0
+    ],
+    "intra_zone_latency_range": [
+      5,
+      15
+    ],
+    "inter_zone_latency_range": [
+      20,
+      100
+    ],
+    "dataset_name": "cifar100",
+    "max_samples": -1,
+    "data_distribution": "dirichlet",
+    "intra_zone_alpha": 10,
+    "inter_zone_alpha": 0.3,
+    "train_test_split": 0.8,
+    "model_configs": {
+      "cifar100": {
+        "model_type": "resnet18",
+        "num_classes": 100,
+        "input_shape": [
+          3,
+          32,
+          32
+        ]
+      },
+      "femnist": {
+        "model_type": "cnn",
+        "num_classes": 62,
+        "input_shape": [
+          1,
+          28,
+          28
+        ]
+      },
+      "shakespeare": {
+        "model_type": "lstm",
+        "vocab_size": 79,
+        "embedding_dim": 64,
+        "hidden_dim": 256,
+        "num_layers": 3
+      }
+    },
+    "log_level": "INFO",
+    "save_logs": true,
+    "log_dir": "./logs",
+    "checkpoint_dir": "./checkpoints",
+    "results_dir": "./results",
+    "plot_interval": 10,
+    "save_interval": 50,
+    "random_seed": 42,
+    "device": "cuda",
+    "num_workers": 4,
+    "baselines": [
+      "fedavg",
+      "fedprox",
+      "hierfl",
+      "clusterfl"
+    ],
+    "enable_differential_privacy": false,
+    "dp_epsilon": 1.0,
+    "dp_delta": 1e-05,
+    "enable_secure_aggregation": false,
+    "correlation_threshold": 0.05,
+    "enable_compression": true,
+    "async_aggregation": false,
+    "enable_failure": false
+  },
+  "continuum_fl_results": {
+    "total_rounds": 201,
+    "total_training_time": 37655.94432401657,
+    "final_accuracy": 0.4292,
+    "final_loss": 5.787007692142035,
+    "average_round_time": 188.26523794651033,
+    "total_communication_cost": 246182.01749267578,
+    "device_participation_stats": {
+      "device_3": 138,
+      "device_5": 138,
+      "device_27": 127,
+      "device_1": 134,
+      "device_20": 133,
+      "device_29": 123,
+      "device_4": 139,
+      "device_17": 116,
+      "device_15": 123,
+      "device_16": 116,
+      "device_10": 133,
+      "device_22": 104,
+      "device_18": 129,
+      "device_21": 121,
+      "device_19": 125,
+      "device_0": 128,
+      "device_12": 131,
+      "device_6": 126,
+      "device_23": 138,
+      "device_24": 127,
+      "device_7": 127,
+      "device_26": 105,
+      "device_9": 118,
+      "device_14": 123,
+      "device_13": 114,
+      "device_11": 123,
+      "device_28": 133,
+      "device_2": 130,
+      "device_8": 137,
+      "device_25": 130
+    },
+    "convergence_rounds": 190,
+    "zone_discovery_stats": {
+      "rounds_completed": 1,
+      "average_stability": 1.0,
+      "total_migrations": 0,
+      "migration_history_size": 0
+    },
+    "aggregation_stats": {
+      "total_rounds": 200,
+      "zone_participation_rates": {
+        "zone_0": 1.0,
+        "zone_1": 1.0,
+        "zone_2": 1.0,
+        "zone_3": 1.0,
+        "zone_4": 1.0
+      },
+      "average_communication_cost_mb": 1233.73740234375,
+      "spatial_correlations": {
+        "average": 0.9972062427240519,
+        "maximum": 0.9999999992944921,
+        "total_pairs": 15
+      },
+      "staleness_distribution": {
+        "zone_0": 0,
+        "zone_1": 0,
+        "zone_2": 0,
+        "zone_3": 0,
+        "zone_4": 0
+      },
+      "current_zone_weights": {
+        "zone_0": 0.13600705778923497,
+        "zone_1": 0.04843944816750089,
+        "zone_2": 0.04843944816750089,
+        "zone_3": 0.7186745977082624,
+        "zone_4": 0.04843944816750089
+      }
+    }
+  },
+  "baseline_results": {},
+  "experiment_timestamp": "2025-09-17 05:27:14",
+  "framework_version": "1.0.0"
+}

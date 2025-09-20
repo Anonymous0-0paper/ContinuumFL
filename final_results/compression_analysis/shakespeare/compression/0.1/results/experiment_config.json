@@ -1,0 +1,117 @@
+{
+  "num_devices": 100,
+  "num_zones": 10,
+  "num_edge_servers": 20,
+  "region_size": [
+    100.0,
+    100.0
+  ],
+  "similarity_weights": {
+    "spatial": 0.4,
+    "data": 0.4,
+    "network": 0.2
+  },
+  "similarity_threshold": 0.6,
+  "min_zone_size": 4,
+  "max_zone_size": 14,
+  "distance_scaling": 10.0,
+  "stability_tradeoff": 0.3,
+  "stability_threshold": 0.1,
+  "stability_window": 10,
+  "device_failure_probability": 0.05,
+  "zone_failure_probability": 0.02,
+  "enable_failure": false,
+  "num_rounds": 200,
+  "local_epochs": 5,
+  "learning_rate": 0.001,
+  "batch_size": 32,
+  "momentum": 0.9,
+  "weight_decay": 0.0001,
+  "spatial_regularization": 0.1,
+  "momentum_eta": 0.9,
+  "staleness_penalty": 0.01,
+  "max_staleness": 5,
+  "fairness_strength": 0.5,
+  "compression_rate": 0.1,
+  "quantization_bits": 8,
+  "cache_threshold": 0.95,
+  "total_bandwidth": 1000.0,
+  "deadline_constraint": 60,
+  "device_compute_range": [
+    1.0,
+    10.0
+  ],
+  "device_memory_range": [
+    1.0,
+    8.0
+  ],
+  "device_bandwidth_range": [
+    10.0,
+    100.0
+  ],
+  "intra_zone_latency_range": [
+    5,
+    15
+  ],
+  "inter_zone_latency_range": [
+    20,
+    100
+  ],
+  "dataset_name": "shakespeare",
+  "max_samples": -1,
+  "data_distribution": "dirichlet",
+  "intra_zone_alpha": 10,
+  "inter_zone_alpha": 0.3,
+  "train_test_split": 0.8,
+  "shakespeare_num_speakers": 45,
+  "model_configs": {
+    "cifar100": {
+      "model_type": "resnet18",
+      "num_classes": 100,
+      "input_shape": [
+        3,
+        32,
+        32
+      ]
+    },
+    "femnist": {
+      "model_type": "cnn",
+      "num_classes": 62,
+      "input_shape": [
+        1,
+        28,
+        28
+      ]
+    },
+    "shakespeare": {
+      "model_type": "lstm",
+      "vocab_size": 79,
+      "embedding_dim": 64,
+      "hidden_dim": 256,
+      "num_layers": 3
+    }
+  },
+  "log_level": "INFO",
+  "save_logs": true,
+  "log_dir": "./logs",
+  "checkpoint_dir": "./checkpoints",
+  "results_dir": "./results",
+  "plot_interval": 10,
+  "save_interval": 50,
+  "random_seed": 42,
+  "device": "cuda",
+  "num_workers": 4,
+  "baselines": [
+    "fedavg",
+    "fedprox",
+    "hierfl",
+    "clusterfl"
+  ],
+  "enable_differential_privacy": false,
+  "dp_epsilon": 1.0,
+  "dp_delta": 1e-05,
+  "enable_secure_aggregation": false,
+  "correlation_threshold": 0.05,
+  "enable_compression": true,
+  "async_aggregation": false
+}
