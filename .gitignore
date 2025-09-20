@@ -13,9 +13,9 @@
 *~
 
 **/__pycache__/
-**/results/
-**/saved_results/
-**/logs/
+results/
+saved_results/
+logs/
 data/
 
 *.bak
