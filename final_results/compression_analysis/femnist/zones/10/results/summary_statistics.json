@@ -1,0 +1,84 @@
+{
+  "system_configuration": {
+    "num_devices": 100,
+    "num_zones": 16,
+    "num_rounds": 200,
+    "dataset": "femnist"
+  },
+  "final_performance": {
+    "continuum_fl": {
+      "accuracy": 0.50484,
+      "loss": 2.2598923632251027,
+      "total_communication_cost": 208771.1456298828
+    }
+  },
+  "aggregation_statistics": {
+    "total_rounds": 200,
+    "zone_participation_rates": {
+      "zone_0": 1.0,
+      "zone_1": 1.0,
+      "zone_2": 1.0,
+      "zone_3": 1.0,
+      "zone_4": 1.0,
+      "zone_5": 1.0,
+      "zone_6": 1.0,
+      "zone_7": 1.0,
+      "zone_8": 1.0,
+      "zone_9": 1.0,
+      "zone_10": 1.0,
+      "zone_11": 1.0,
+      "zone_12": 1.0,
+      "zone_13": 1.0,
+      "zone_14": 1.0,
+      "zone_15": 1.0
+    },
+    "average_communication_cost_mb": 1043.855728149414,
+    "spatial_correlations": {
+      "average": 0.9999709622944439,
+      "maximum": 1.000017466874849,
+      "total_pairs": 136
+    },
+    "staleness_distribution": {
+      "zone_0": 0,
+      "zone_1": 0,
+      "zone_2": 0,
+      "zone_3": 0,
+      "zone_4": 0,
+      "zone_5": 0,
+      "zone_6": 0,
+      "zone_7": 0,
+      "zone_8": 0,
+      "zone_9": 0,
+      "zone_10": 0,
+      "zone_11": 0,
+      "zone_12": 0,
+      "zone_13": 0,
+      "zone_14": 0,
+      "zone_15": 0
+    },
+    "current_zone_weights": {
+      "zone_0": 0.058074640638173164,
+      "zone_1": 0.06274596108610882,
+      "zone_2": 0.060434198869427413,
+      "zone_3": 0.06805397237923513,
+      "zone_4": 0.058970345996277374,
+      "zone_5": 0.07405373784361043,
+      "zone_6": 0.04166848829362149,
+      "zone_7": 0.06207425778146491,
+      "zone_8": 0.072197784056366,
+      "zone_9": 0.056359810273802394,
+      "zone_10": 0.07209646933918251,
+      "zone_11": 0.05658697849595541,
+      "zone_12": 0.04662493162003062,
+      "zone_13": 0.062248548538945174,
+      "zone_14": 0.07373925813294076,
+      "zone_15": 0.07407061665485833
+    }
+  },
+  "zone_discovery_statistics": {
+    "rounds_completed": 1,
+    "average_stability": 1.0,
+    "total_migrations": 0,
+    "migration_history_size": 0
+  }
+}
