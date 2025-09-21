@@ -1,0 +1,249 @@
+{
+  "experiment_config": {
+    "num_devices": 100,
+    "num_zones": 10,
+    "num_edge_servers": 20,
+    "region_size": [
+      100.0,
+      100.0
+    ],
+    "similarity_weights": {
+      "spatial": 0.4,
+      "data": 0.4,
+      "network": 0.2
+    },
+    "similarity_threshold": 0.6,
+    "min_zone_size": 4,
+    "max_zone_size": 15,
+    "distance_scaling": 10.0,
+    "stability_tradeoff": 0.3,
+    "stability_threshold": 0.1,
+    "stability_window": 10,
+    "device_failure_probability": 0.25,
+    "zone_failure_probability": 0.15,
+    "enable_failure": true,
+    "num_rounds": 200,
+    "local_epochs": 5,
+    "learning_rate": 0.001,
+    "batch_size": 32,
+    "momentum": 0.9,
+    "weight_decay": 0.0001,
+    "spatial_regularization": 0.1,
+    "momentum_eta": 0.9,
+    "staleness_penalty": 0.01,
+    "max_staleness": 5,
+    "fairness_strength": 0.5,
+    "compression_rate": 0.1,
+    "quantization_bits": 8,
+    "cache_threshold": 0.95,
+    "total_bandwidth": 1000.0,
+    "deadline_constraint": 60,
+    "device_compute_range": [
+      1.0,
+      10.0
+    ],
+    "device_memory_range": [
+      1.0,
+      8.0
+    ],
+    "device_bandwidth_range": [
+      10.0,
+      100.0
+    ],
+    "intra_zone_latency_range": [
+      5,
+      15
+    ],
+    "inter_zone_latency_range": [
+      20,
+      100
+    ],
+    "dataset_name": "shakespeare",
+    "max_samples": -1,
+    "data_distribution": "dirichlet",
+    "intra_zone_alpha": 10,
+    "inter_zone_alpha": 0.3,
+    "train_test_split": 0.8,
+    "shakespeare_num_speakers": 45,
+    "model_configs": {
+      "cifar100": {
+        "model_type": "resnet18",
+        "num_classes": 100,
+        "input_shape": [
+          3,
+          32,
+          32
+        ]
+      },
+      "femnist": {
+        "model_type": "cnn",
+        "num_classes": 62,
+        "input_shape": [
+          1,
+          28,
+          28
+        ]
+      },
+      "shakespeare": {
+        "model_type": "lstm",
+        "vocab_size": 79,
+        "embedding_dim": 64,
+        "hidden_dim": 256,
+        "num_layers": 3
+      }
+    },
+    "log_level": "INFO",
+    "save_logs": true,
+    "log_dir": "./logs",
+    "checkpoint_dir": "./checkpoints",
+    "results_dir": "./results",
+    "plot_interval": 10,
+    "save_interval": 50,
+    "random_seed": 42,
+    "device": "cuda",
+    "num_workers": 4,
+    "baselines": [
+      "fedavg",
+      "fedprox",
+      "hierfl",
+      "clusterfl"
+    ],
+    "enable_differential_privacy": false,
+    "dp_epsilon": 1.0,
+    "dp_delta": 1e-05,
+    "enable_secure_aggregation": false,
+    "correlation_threshold": 0.05,
+    "enable_compression": false,
+    "async_aggregation": false
+  },
+  "continuum_fl_results": {
+    "total_rounds": 201,
+    "total_training_time": 1797.4600789546967,
+    "final_accuracy": 0.2803315489552754,
+    "final_loss": 4.310182218393568,
+    "average_round_time": 8.936515839099885,
+    "total_communication_cost": 5380.914756774902,
+    "device_participation_stats": {
+      "device_7": 4,
+      "device_20": 2,
+      "device_62": 7,
+      "device_57": 17,
+      "device_4": 1,
+      "device_35": 2,
+      "device_31": 9,
+      "device_22": 2,
+      "device_68": 4,
+      "device_39": 5,
+      "device_6": 3,
+      "device_33": 20,
+      "device_71": 4,
+      "device_18": 6,
+      "device_49": 3,
+      "device_69": 1,
+      "device_38": 3,
+      "device_60": 1,
+      "device_96": 5,
+      "device_61": 8,
+      "device_64": 4,
+      "device_50": 1,
+      "device_45": 4,
+      "device_0": 1,
+      "device_65": 13,
+      "device_2": 15,
+      "device_82": 1,
+      "device_92": 3,
+      "device_90": 4,
+      "device_85": 1,
+      "device_84": 12,
+      "device_34": 3,
+      "device_95": 3,
+      "device_19": 1,
+      "device_41": 1,
+      "device_36": 11,
+      "device_93": 8,
+      "device_67": 2,
+      "device_1": 3,
+      "device_77": 6,
+      "device_52": 2,
+      "device_78": 2,
+      "device_25": 2,
+      "device_5": 3,
+      "device_99": 3,
+      "device_56": 6,
+      "device_54": 2,
+      "device_23": 1,
+      "device_81": 2,
+      "device_10": 2,
+      "device_98": 2,
+      "device_94": 1,
+      "device_73": 1,
+      "device_74": 3,
+      "device_40": 2,
+      "device_86": 6,
+      "device_24": 8,
+      "device_76": 5,
+      "device_16": 5,
+      "device_8": 12,
+      "device_29": 4,
+      "device_80": 6,
+      "device_79": 3,
+      "device_12": 4,
+      "device_72": 2,
+      "device_11": 3,
+      "device_87": 14,
+      "device_47": 9,
+      "device_15": 3,
+      "device_3": 5,
+      "device_53": 2,
+      "device_13": 1,
+      "device_70": 8,
+      "device_48": 1,
+      "device_75": 4,
+      "device_89": 1,
+      "device_55": 3,
+      "device_83": 4,
+      "device_88": 1,
+      "device_43": 6,
+      "device_14": 5,
+      "device_17": 4
+    },
+    "convergence_rounds": 190,
+    "zone_discovery_stats": {
+      "rounds_completed": 1,
+      "average_stability": 1.0,
+      "total_migrations": 0,
+      "migration_history_size": 0
+    },
+    "aggregation_stats": {
+      "total_rounds": 200,
+      "zone_participation_rates": {
+        "standalone_devices": 1.0
+      },
+      "average_communication_cost_mb": 0.0,
+      "spatial_correlations": {
+        "average": 0.4132288139190392,
+        "maximum": 0.9999999986724624,
+        "total_pairs": 61
+      },
+      "staleness_distribution": {
+        "zone_0": 0,
+        "zone_1": 0,
+        "zone_2": 0,
+        "zone_3": 0,
+        "zone_4": 0,
+        "zone_5": 0,
+        "zone_6": 0,
+        "zone_7": 0,
+        "zone_8": 0,
+        "zone_9": 0,
+        "standalone_devices": 0
+      },
+      "current_zone_weights": {
+        "standalone_devices": 1.0
+      }
+    }
+  },
+  "baseline_results": {},
+  "experiment_timestamp": "2025-09-21 00:12:27",
+  "framework_version": "1.0.0"
+}

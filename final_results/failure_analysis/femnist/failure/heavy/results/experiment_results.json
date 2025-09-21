@@ -1,0 +1,245 @@
+{
+  "experiment_config": {
+    "num_devices": 100,
+    "num_zones": 10,
+    "num_edge_servers": 20,
+    "region_size": [
+      100.0,
+      100.0
+    ],
+    "similarity_weights": {
+      "spatial": 0.4,
+      "data": 0.4,
+      "network": 0.2
+    },
+    "similarity_threshold": 0.6,
+    "min_zone_size": 4,
+    "max_zone_size": 15,
+    "distance_scaling": 10.0,
+    "stability_tradeoff": 0.3,
+    "stability_threshold": 0.1,
+    "stability_window": 10,
+    "device_failure_probability": 0.25,
+    "zone_failure_probability": 0.15,
+    "enable_failure": true,
+    "num_rounds": 200,
+    "local_epochs": 5,
+    "learning_rate": 0.001,
+    "batch_size": 32,
+    "momentum": 0.9,
+    "weight_decay": 0.0001,
+    "spatial_regularization": 0.1,
+    "momentum_eta": 0.9,
+    "staleness_penalty": 0.01,
+    "max_staleness": 5,
+    "fairness_strength": 0.5,
+    "compression_rate": 0.1,
+    "quantization_bits": 8,
+    "cache_threshold": 0.95,
+    "total_bandwidth": 1000.0,
+    "deadline_constraint": 60,
+    "device_compute_range": [
+      1.0,
+      10.0
+    ],
+    "device_memory_range": [
+      1.0,
+      8.0
+    ],
+    "device_bandwidth_range": [
+      10.0,
+      100.0
+    ],
+    "intra_zone_latency_range": [
+      5,
+      15
+    ],
+    "inter_zone_latency_range": [
+      20,
+      100
+    ],
+    "dataset_name": "femnist",
+    "max_samples": 50000,
+    "data_distribution": "dirichlet",
+    "intra_zone_alpha": 10,
+    "inter_zone_alpha": 0.3,
+    "train_test_split": 0.8,
+    "shakespeare_num_speakers": 35,
+    "model_configs": {
+      "cifar100": {
+        "model_type": "resnet18",
+        "num_classes": 100,
+        "input_shape": [
+          3,
+          32,
+          32
+        ]
+      },
+      "femnist": {
+        "model_type": "cnn",
+        "num_classes": 62,
+        "input_shape": [
+          1,
+          28,
+          28
+        ]
+      },
+      "shakespeare": {
+        "model_type": "lstm",
+        "vocab_size": 79,
+        "embedding_dim": 64,
+        "hidden_dim": 256,
+        "num_layers": 3
+      }
+    },
+    "log_level": "INFO",
+    "save_logs": true,
+    "log_dir": "./logs",
+    "checkpoint_dir": "./checkpoints",
+    "results_dir": "./results",
+    "plot_interval": 10,
+    "save_interval": 50,
+    "random_seed": 42,
+    "device": "cuda",
+    "num_workers": 4,
+    "baselines": [
+      "fedavg",
+      "fedprox",
+      "hierfl",
+      "clusterfl"
+    ],
+    "enable_differential_privacy": false,
+    "dp_epsilon": 1.0,
+    "dp_delta": 1e-05,
+    "enable_secure_aggregation": false,
+    "correlation_threshold": 0.05,
+    "enable_compression": false,
+    "async_aggregation": false
+  },
+  "continuum_fl_results": {
+    "total_rounds": 201,
+    "total_training_time": 3575.904059410095,
+    "final_accuracy": 0.45018,
+    "final_loss": 8.433596267199867,
+    "average_round_time": 17.811352373361586,
+    "total_communication_cost": 5774.23991394043,
+    "device_participation_stats": {
+      "device_19": 3,
+      "device_65": 3,
+      "device_56": 1,
+      "device_95": 13,
+      "device_36": 4,
+      "device_10": 4,
+      "device_49": 1,
+      "device_22": 8,
+      "device_98": 2,
+      "device_6": 6,
+      "device_39": 4,
+      "device_54": 3,
+      "device_66": 3,
+      "device_25": 2,
+      "device_78": 5,
+      "device_99": 8,
+      "device_91": 3,
+      "device_62": 4,
+      "device_46": 3,
+      "device_34": 2,
+      "device_51": 3,
+      "device_23": 7,
+      "device_7": 3,
+      "device_9": 4,
+      "device_52": 3,
+      "device_41": 1,
+      "device_2": 5,
+      "device_68": 7,
+      "device_90": 1,
+      "device_63": 2,
+      "device_69": 10,
+      "device_81": 1,
+      "device_93": 19,
+      "device_61": 3,
+      "device_38": 1,
+      "device_31": 4,
+      "device_50": 12,
+      "device_35": 4,
+      "device_4": 1,
+      "device_27": 6,
+      "device_1": 9,
+      "device_18": 3,
+      "device_5": 2,
+      "device_85": 4,
+      "device_96": 2,
+      "device_45": 18,
+      "device_92": 5,
+      "device_57": 9,
+      "device_28": 11,
+      "device_82": 4,
+      "device_77": 1,
+      "device_71": 4,
+      "device_84": 6,
+      "device_21": 5,
+      "device_48": 3,
+      "device_86": 6,
+      "device_53": 4,
+      "device_42": 3,
+      "device_12": 2,
+      "device_74": 2,
+      "device_72": 1,
+      "device_14": 11,
+      "device_16": 2,
+      "device_29": 4,
+      "device_58": 3,
+      "device_89": 2,
+      "device_37": 1,
+      "device_17": 1,
+      "device_87": 1,
+      "device_76": 6,
+      "device_40": 1,
+      "device_26": 15,
+      "device_13": 2,
+      "device_79": 6,
+      "device_11": 1,
+      "device_83": 5,
+      "device_24": 6,
+      "device_43": 1
+    },
+    "convergence_rounds": 190,
+    "zone_discovery_stats": {
+      "rounds_completed": 1,
+      "average_stability": 1.0,
+      "total_migrations": 0,
+      "migration_history_size": 0
+    },
+    "aggregation_stats": {
+      "total_rounds": 200,
+      "zone_participation_rates": {
+        "standalone_devices": 1.0
+      },
+      "average_communication_cost_mb": 0.0,
+      "spatial_correlations": {
+        "average": 0.2906513007763304,
+        "maximum": 0.9999999990322251,
+        "total_pairs": 61
+      },
+      "staleness_distribution": {
+        "zone_0": 0,
+        "zone_1": 0,
+        "zone_2": 0,
+        "zone_3": 0,
+        "zone_4": 0,
+        "zone_5": 0,
+        "zone_6": 0,
+        "zone_7": 0,
+        "zone_8": 0,
+        "zone_9": 0,
+        "standalone_devices": 0
+      },
+      "current_zone_weights": {
+        "standalone_devices": 1.0
+      }
+    }
+  },
+  "baseline_results": {},
+  "experiment_timestamp": "2025-09-21 00:45:00",
+  "framework_version": "1.0.0"
+}

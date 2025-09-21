@@ -1,0 +1,675 @@
+{
+  "total_devices": 100,
+  "device_stats": {
+    "device_98": {
+      "train_samples": 241,
+      "test_samples": 245,
+      "total_samples": 486,
+      "zone": "standalone_devices"
+    },
+    "device_39": {
+      "train_samples": 234,
+      "test_samples": 235,
+      "total_samples": 469,
+      "zone": "standalone_devices"
+    },
+    "device_54": {
+      "train_samples": 271,
+      "test_samples": 277,
+      "total_samples": 548,
+      "zone": "standalone_devices"
+    },
+    "device_99": {
+      "train_samples": 253,
+      "test_samples": 257,
+      "total_samples": 510,
+      "zone": "standalone_devices"
+    },
+    "device_48": {
+      "train_samples": 161,
+      "test_samples": 164,
+      "total_samples": 325,
+      "zone": "standalone_devices"
+    },
+    "device_49": {
+      "train_samples": 138,
+      "test_samples": 143,
+      "total_samples": 281,
+      "zone": "standalone_devices"
+    },
+    "device_82": {
+      "train_samples": 694,
+      "test_samples": 699,
+      "total_samples": 1393,
+      "zone": "standalone_devices"
+    },
+    "device_28": {
+      "train_samples": 833,
+      "test_samples": 832,
+      "total_samples": 1665,
+      "zone": "standalone_devices"
+    },
+    "device_15": {
+      "train_samples": 825,
+      "test_samples": 825,
+      "total_samples": 1650,
+      "zone": "standalone_devices"
+    },
+    "device_56": {
+      "train_samples": 186,
+      "test_samples": 188,
+      "total_samples": 374,
+      "zone": "standalone_devices"
+    },
+    "device_0": {
+      "train_samples": 1032,
+      "test_samples": 1034,
+      "total_samples": 2066,
+      "zone": "standalone_devices"
+    },
+    "device_84": {
+      "train_samples": 1144,
+      "test_samples": 1142,
+      "total_samples": 2286,
+      "zone": "standalone_devices"
+    },
+    "device_71": {
+      "train_samples": 947,
+      "test_samples": 945,
+      "total_samples": 1892,
+      "zone": "standalone_devices"
+    },
+    "device_40": {
+      "train_samples": 1177,
+      "test_samples": 1173,
+      "total_samples": 2350,
+      "zone": "standalone_devices"
+    },
+    "device_26": {
+      "train_samples": 1198,
+      "test_samples": 1195,
+      "total_samples": 2393,
+      "zone": "standalone_devices"
+    },
+    "device_77": {
+      "train_samples": 911,
+      "test_samples": 914,
+      "total_samples": 1825,
+      "zone": "standalone_devices"
+    },
+    "device_79": {
+      "train_samples": 995,
+      "test_samples": 993,
+      "total_samples": 1988,
+      "zone": "standalone_devices"
+    },
+    "device_6": {
+      "train_samples": 226,
+      "test_samples": 223,
+      "total_samples": 449,
+      "zone": "standalone_devices"
+    },
+    "device_72": {
+      "train_samples": 257,
+      "test_samples": 263,
+      "total_samples": 520,
+      "zone": "standalone_devices"
+    },
+    "device_83": {
+      "train_samples": 291,
+      "test_samples": 295,
+      "total_samples": 586,
+      "zone": "standalone_devices"
+    },
+    "device_20": {
+      "train_samples": 241,
+      "test_samples": 244,
+      "total_samples": 485,
+      "zone": "standalone_devices"
+    },
+    "device_53": {
+      "train_samples": 248,
+      "test_samples": 250,
+      "total_samples": 498,
+      "zone": "standalone_devices"
+    },
+    "device_25": {
+      "train_samples": 258,
+      "test_samples": 258,
+      "total_samples": 516,
+      "zone": "standalone_devices"
+    },
+    "device_86": {
+      "train_samples": 168,
+      "test_samples": 169,
+      "total_samples": 337,
+      "zone": "standalone_devices"
+    },
+    "device_95": {
+      "train_samples": 197,
+      "test_samples": 200,
+      "total_samples": 397,
+      "zone": "standalone_devices"
+    },
+    "device_64": {
+      "train_samples": 626,
+      "test_samples": 628,
+      "total_samples": 1254,
+      "zone": "standalone_devices"
+    },
+    "device_4": {
+      "train_samples": 576,
+      "test_samples": 583,
+      "total_samples": 1159,
+      "zone": "standalone_devices"
+    },
+    "device_38": {
+      "train_samples": 535,
+      "test_samples": 541,
+      "total_samples": 1076,
+      "zone": "standalone_devices"
+    },
+    "device_8": {
+      "train_samples": 619,
+      "test_samples": 622,
+      "total_samples": 1241,
+      "zone": "standalone_devices"
+    },
+    "device_17": {
+      "train_samples": 536,
+      "test_samples": 545,
+      "total_samples": 1081,
+      "zone": "standalone_devices"
+    },
+    "device_85": {
+      "train_samples": 586,
+      "test_samples": 590,
+      "total_samples": 1176,
+      "zone": "standalone_devices"
+    },
+    "device_24": {
+      "train_samples": 587,
+      "test_samples": 584,
+      "total_samples": 1171,
+      "zone": "standalone_devices"
+    },
+    "device_89": {
+      "train_samples": 624,
+      "test_samples": 633,
+      "total_samples": 1257,
+      "zone": "standalone_devices"
+    },
+    "device_27": {
+      "train_samples": 671,
+      "test_samples": 686,
+      "total_samples": 1357,
+      "zone": "standalone_devices"
+    },
+    "device_60": {
+      "train_samples": 682,
+      "test_samples": 703,
+      "total_samples": 1385,
+      "zone": "standalone_devices"
+    },
+    "device_93": {
+      "train_samples": 488,
+      "test_samples": 494,
+      "total_samples": 982,
+      "zone": "standalone_devices"
+    },
+    "device_96": {
+      "train_samples": 787,
+      "test_samples": 786,
+      "total_samples": 1573,
+      "zone": "standalone_devices"
+    },
+    "device_18": {
+      "train_samples": 910,
+      "test_samples": 908,
+      "total_samples": 1818,
+      "zone": "standalone_devices"
+    },
+    "device_75": {
+      "train_samples": 881,
+      "test_samples": 881,
+      "total_samples": 1762,
+      "zone": "standalone_devices"
+    },
+    "device_43": {
+      "train_samples": 661,
+      "test_samples": 664,
+      "total_samples": 1325,
+      "zone": "standalone_devices"
+    },
+    "device_32": {
+      "train_samples": 698,
+      "test_samples": 692,
+      "total_samples": 1390,
+      "zone": "standalone_devices"
+    },
+    "device_97": {
+      "train_samples": 687,
+      "test_samples": 666,
+      "total_samples": 1353,
+      "zone": "standalone_devices"
+    },
+    "device_1": {
+      "train_samples": 689,
+      "test_samples": 679,
+      "total_samples": 1368,
+      "zone": "standalone_devices"
+    },
+    "device_37": {
+      "train_samples": 808,
+      "test_samples": 784,
+      "total_samples": 1592,
+      "zone": "standalone_devices"
+    },
+    "device_76": {
+      "train_samples": 619,
+      "test_samples": 603,
+      "total_samples": 1222,
+      "zone": "standalone_devices"
+    },
+    "device_45": {
+      "train_samples": 692,
+      "test_samples": 676,
+      "total_samples": 1368,
+      "zone": "standalone_devices"
+    },
+    "device_80": {
+      "train_samples": 599,
+      "test_samples": 585,
+      "total_samples": 1184,
+      "zone": "standalone_devices"
+    },
+    "device_57": {
+      "train_samples": 720,
+      "test_samples": 706,
+      "total_samples": 1426,
+      "zone": "standalone_devices"
+    },
+    "device_59": {
+      "train_samples": 714,
+      "test_samples": 702,
+      "total_samples": 1416,
+      "zone": "standalone_devices"
+    },
+    "device_92": {
+      "train_samples": 862,
+      "test_samples": 840,
+      "total_samples": 1702,
+      "zone": "standalone_devices"
+    },
+    "device_87": {
+      "train_samples": 642,
+      "test_samples": 629,
+      "total_samples": 1271,
+      "zone": "standalone_devices"
+    },
+    "device_88": {
+      "train_samples": 618,
+      "test_samples": 612,
+      "total_samples": 1230,
+      "zone": "standalone_devices"
+    },
+    "device_73": {
+      "train_samples": 700,
+      "test_samples": 687,
+      "total_samples": 1387,
+      "zone": "standalone_devices"
+    },
+    "device_13": {
+      "train_samples": 639,
+      "test_samples": 629,
+      "total_samples": 1268,
+      "zone": "standalone_devices"
+    },
+    "device_22": {
+      "train_samples": 177,
+      "test_samples": 174,
+      "total_samples": 351,
+      "zone": "standalone_devices"
+    },
+    "device_66": {
+      "train_samples": 378,
+      "test_samples": 385,
+      "total_samples": 763,
+      "zone": "standalone_devices"
+    },
+    "device_67": {
+      "train_samples": 333,
+      "test_samples": 339,
+      "total_samples": 672,
+      "zone": "standalone_devices"
+    },
+    "device_41": {
+      "train_samples": 347,
+      "test_samples": 352,
+      "total_samples": 699,
+      "zone": "standalone_devices"
+    },
+    "device_12": {
+      "train_samples": 351,
+      "test_samples": 357,
+      "total_samples": 708,
+      "zone": "standalone_devices"
+    },
+    "device_47": {
+      "train_samples": 404,
+      "test_samples": 403,
+      "total_samples": 807,
+      "zone": "standalone_devices"
+    },
+    "device_30": {
+      "train_samples": 427,
+      "test_samples": 431,
+      "total_samples": 858,
+      "zone": "standalone_devices"
+    },
+    "device_55": {
+      "train_samples": 350,
+      "test_samples": 350,
+      "total_samples": 700,
+      "zone": "standalone_devices"
+    },
+    "device_23": {
+      "train_samples": 370,
+      "test_samples": 375,
+      "total_samples": 745,
+      "zone": "standalone_devices"
+    },
+    "device_91": {
+      "train_samples": 339,
+      "test_samples": 340,
+      "total_samples": 679,
+      "zone": "standalone_devices"
+    },
+    "device_62": {
+      "train_samples": 341,
+      "test_samples": 343,
+      "total_samples": 684,
+      "zone": "standalone_devices"
+    },
+    "device_65": {
+      "train_samples": 197,
+      "test_samples": 199,
+      "total_samples": 396,
+      "zone": "standalone_devices"
+    },
+    "device_3": {
+      "train_samples": 199,
+      "test_samples": 202,
+      "total_samples": 401,
+      "zone": "standalone_devices"
+    },
+    "device_11": {
+      "train_samples": 213,
+      "test_samples": 212,
+      "total_samples": 425,
+      "zone": "standalone_devices"
+    },
+    "device_19": {
+      "train_samples": 212,
+      "test_samples": 209,
+      "total_samples": 421,
+      "zone": "standalone_devices"
+    },
+    "device_21": {
+      "train_samples": 187,
+      "test_samples": 190,
+      "total_samples": 377,
+      "zone": "standalone_devices"
+    },
+    "device_34": {
+      "train_samples": 403,
+      "test_samples": 403,
+      "total_samples": 806,
+      "zone": "standalone_devices"
+    },
+    "device_7": {
+      "train_samples": 330,
+      "test_samples": 331,
+      "total_samples": 661,
+      "zone": "standalone_devices"
+    },
+    "device_9": {
+      "train_samples": 308,
+      "test_samples": 309,
+      "total_samples": 617,
+      "zone": "standalone_devices"
+    },
+    "device_42": {
+      "train_samples": 425,
+      "test_samples": 424,
+      "total_samples": 849,
+      "zone": "standalone_devices"
+    },
+    "device_74": {
+      "train_samples": 351,
+      "test_samples": 355,
+      "total_samples": 706,
+      "zone": "standalone_devices"
+    },
+    "device_46": {
+      "train_samples": 368,
+      "test_samples": 366,
+      "total_samples": 734,
+      "zone": "standalone_devices"
+    },
+    "device_14": {
+      "train_samples": 462,
+      "test_samples": 457,
+      "total_samples": 919,
+      "zone": "standalone_devices"
+    },
+    "device_16": {
+      "train_samples": 376,
+      "test_samples": 380,
+      "total_samples": 756,
+      "zone": "standalone_devices"
+    },
+    "device_78": {
+      "train_samples": 368,
+      "test_samples": 372,
+      "total_samples": 740,
+      "zone": "standalone_devices"
+    },
+    "device_51": {
+      "train_samples": 329,
+      "test_samples": 327,
+      "total_samples": 656,
+      "zone": "standalone_devices"
+    },
+    "device_52": {
+      "train_samples": 339,
+      "test_samples": 338,
+      "total_samples": 677,
+      "zone": "standalone_devices"
+    },
+    "device_90": {
+      "train_samples": 411,
+      "test_samples": 409,
+      "total_samples": 820,
+      "zone": "standalone_devices"
+    },
+    "device_33": {
+      "train_samples": 215,
+      "test_samples": 215,
+      "total_samples": 430,
+      "zone": "standalone_devices"
+    },
+    "device_36": {
+      "train_samples": 171,
+      "test_samples": 173,
+      "total_samples": 344,
+      "zone": "standalone_devices"
+    },
+    "device_10": {
+      "train_samples": 167,
+      "test_samples": 166,
+      "total_samples": 333,
+      "zone": "standalone_devices"
+    },
+    "device_2": {
+      "train_samples": 501,
+      "test_samples": 509,
+      "total_samples": 1010,
+      "zone": "standalone_devices"
+    },
+    "device_68": {
+      "train_samples": 419,
+      "test_samples": 428,
+      "total_samples": 847,
+      "zone": "standalone_devices"
+    },
+    "device_69": {
+      "train_samples": 475,
+      "test_samples": 479,
+      "total_samples": 954,
+      "zone": "standalone_devices"
+    },
+    "device_70": {
+      "train_samples": 441,
+      "test_samples": 446,
+      "total_samples": 887,
+      "zone": "standalone_devices"
+    },
+    "device_44": {
+      "train_samples": 548,
+      "test_samples": 555,
+      "total_samples": 1103,
+      "zone": "standalone_devices"
+    },
+    "device_81": {
+      "train_samples": 464,
+      "test_samples": 472,
+      "total_samples": 936,
+      "zone": "standalone_devices"
+    },
+    "device_29": {
+      "train_samples": 521,
+      "test_samples": 526,
+      "total_samples": 1047,
+      "zone": "standalone_devices"
+    },
+    "device_58": {
+      "train_samples": 477,
+      "test_samples": 483,
+      "total_samples": 960,
+      "zone": "standalone_devices"
+    },
+    "device_31": {
+      "train_samples": 473,
+      "test_samples": 485,
+      "total_samples": 958,
+      "zone": "standalone_devices"
+    },
+    "device_61": {
+      "train_samples": 441,
+      "test_samples": 441,
+      "total_samples": 882,
+      "zone": "standalone_devices"
+    },
+    "device_94": {
+      "train_samples": 496,
+      "test_samples": 498,
+      "total_samples": 994,
+      "zone": "standalone_devices"
+    },
+    "device_63": {
+      "train_samples": 415,
+      "test_samples": 424,
+      "total_samples": 839,
+      "zone": "standalone_devices"
+    },
+    "device_50": {
+      "train_samples": 667,
+      "test_samples": 655,
+      "total_samples": 1322,
+      "zone": "standalone_devices"
+    },
+    "device_35": {
+      "train_samples": 689,
+      "test_samples": 674,
+      "total_samples": 1363,
+      "zone": "standalone_devices"
+    },
+    "device_5": {
+      "train_samples": 543,
+      "test_samples": 538,
+      "total_samples": 1081,
+      "zone": "standalone_devices"
+    }
+  },
+  "zone_stats": {
+    "standalone_devices": {
+      "devices": 100,
+      "total_samples": 100000,
+      "class_distribution": {
+        "0": 2547,
+        "1": 2723,
+        "2": 2505,
+        "4": 2349,
+        "9": 2491,
+        "10": 480,
+        "11": 286,
+        "12": 734,
+        "13": 338,
+        "14": 361,
+        "18": 866,
+        "19": 264,
+        "21": 342,
+        "23": 548,
+        "24": 1795,
+        "26": 188,
+        "27": 366,
+        "30": 905,
+        "31": 354,
+        "32": 329,
+        "33": 207,
+        "36": 694,
+        "37": 366,
+        "42": 278,
+        "45": 130,
+        "46": 224,
+        "47": 1098,
+        "48": 189,
+        "51": 181,
+        "52": 224,
+        "58": 209,
+        "41": 181,
+        "60": 149,
+        "15": 664,
+        "34": 339,
+        "49": 805,
+        "57": 212,
+        "5": 2214,
+        "7": 2573,
+        "8": 2429,
+        "20": 176,
+        "22": 618,
+        "25": 603,
+        "40": 1739,
+        "43": 651,
+        "54": 204,
+        "55": 1231,
+        "61": 220,
+        "38": 194,
+        "16": 185,
+        "3": 2444,
+        "6": 2448,
+        "29": 716,
+        "39": 721,
+        "44": 166,
+        "53": 1044,
+        "28": 1453,
+        "35": 190,
+        "50": 195,
+        "56": 210,
+        "59": 213,
+        "17": 242
+      }
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "system_configuration": {
+    "num_devices": 100,
+    "num_zones": 1,
+    "num_rounds": 200,
+    "dataset": "shakespeare"
+  },
+  "final_performance": {
+    "continuum_fl": {
+      "accuracy": 0.3125884993956139,
+      "loss": 7.572170126899171,
+      "total_communication_cost": 16572.358222961426
+    }
+  },
+  "aggregation_statistics": {
+    "total_rounds": 200,
+    "zone_participation_rates": {
+      "standalone_devices": 1.0
+    },
+    "average_communication_cost_mb": 0.0,
+    "spatial_correlations": {
+      "average": 0.4876214848477134,
+      "maximum": 0.999999997976623,
+      "total_pairs": 62
+    },
+    "staleness_distribution": {
+      "zone_0": 0,
+      "zone_1": 0,
+      "zone_2": 0,
+      "zone_3": 0,
+      "zone_4": 0,
+      "zone_5": 0,
+      "zone_6": 0,
+      "zone_7": 0,
+      "zone_8": 0,
+      "zone_9": 0,
+      "standalone_devices": 0
+    },
+    "current_zone_weights": {
+      "standalone_devices": 1.0
+    }
+  },
+  "zone_discovery_statistics": {
+    "rounds_completed": 1,
+    "average_stability": 1.0,
+    "total_migrations": 0,
+    "migration_history_size": 0
+  }
+}

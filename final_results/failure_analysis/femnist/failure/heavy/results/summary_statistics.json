@@ -1,0 +1,49 @@
+{
+  "system_configuration": {
+    "num_devices": 100,
+    "num_zones": 1,
+    "num_rounds": 200,
+    "dataset": "femnist"
+  },
+  "final_performance": {
+    "continuum_fl": {
+      "accuracy": 0.45018,
+      "loss": 8.433596267199867,
+      "total_communication_cost": 5774.23991394043
+    }
+  },
+  "aggregation_statistics": {
+    "total_rounds": 200,
+    "zone_participation_rates": {
+      "standalone_devices": 1.0
+    },
+    "average_communication_cost_mb": 0.0,
+    "spatial_correlations": {
+      "average": 0.2906513007763304,
+      "maximum": 0.9999999990322251,
+      "total_pairs": 61
+    },
+    "staleness_distribution": {
+      "zone_0": 0,
+      "zone_1": 0,
+      "zone_2": 0,
+      "zone_3": 0,
+      "zone_4": 0,
+      "zone_5": 0,
+      "zone_6": 0,
+      "zone_7": 0,
+      "zone_8": 0,
+      "zone_9": 0,
+      "standalone_devices": 0
+    },
+    "current_zone_weights": {
+      "standalone_devices": 1.0
+    }
+  },
+  "zone_discovery_statistics": {
+    "rounds_completed": 1,
+    "average_stability": 1.0,
+    "total_migrations": 0,
+    "migration_history_size": 0
+  }
+}
