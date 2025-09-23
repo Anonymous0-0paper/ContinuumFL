@@ -716,7 +716,6 @@ class ContinuumFLCoordinator:
         self.logger.info("Running baseline comparisons...")
         
         baseline_results = {}
-        
         for baseline_name in self.config.baselines:
             self.logger.info(f"Running {baseline_name}...")
             

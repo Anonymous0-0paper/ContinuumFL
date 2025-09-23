@@ -5,12 +5,9 @@ Handles dataset downloading, preprocessing, and non-IID distribution across zone
 
 import os
 import random
-from math import floor
-import time
 import datasets
 import numpy as np
 import torch
-import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, Subset
 import torchvision
 import torchvision.transforms as transforms
@@ -18,9 +15,8 @@ from typing import Dict, List, Tuple, Optional, Any, Union
 import pickle
 import json
 from collections import defaultdict
-from datasets import load_dataset, DownloadConfig, concatenate_datasets
+from datasets import load_dataset, DownloadConfig
 from src.core.zone import Zone
-from src.models.model_factory import FEMNISTNet
 
 try:
     import requests
@@ -32,7 +28,6 @@ try:
 except ImportError:
     print("Warning: zipfile not available")
     zipfile = None
-import gzip
 
 class FederatedDataset:
     """Base class for federated datasets with spatial non-IID distribution"""
@@ -488,7 +483,11 @@ class FederatedDataset:
             class_indices = test_class_indices[clazz]
             rng.shuffle(class_indices)
 
-            zone_distributions = zone_distribution_cache[clazz]
+            if clazz in device_train_indices:
+                zone_distributions = zone_distribution_cache[clazz]
+            else:
+                zone_distributions = dict(zip(list(zones.keys()), rng.dirichlet([self.inter_zone_alpha] * num_zones)))
+
             counts = {zone_id: int(zone_distributions[zone_id] * len(class_indices)) for zone_id in zones.keys()}
             while np.array(list(counts.values())).sum() < len(class_indices): counts[
                 max(zone_distributions, key=zone_distributions.get)] += 1
@@ -504,12 +503,17 @@ class FederatedDataset:
         total_samples = 0
         for zone_id, device_list in zones.items():
             zn_idxs = zone_indices[zone_id]
+            num_devices = len(device_list)
 
             for clazz in zn_idxs:
                 class_indices = zn_idxs[clazz]
                 rng.shuffle(class_indices)
 
-                device_distributions = device_distribution_cache[clazz]
+                if clazz in device_train_indices:
+                    device_distributions = device_distribution_cache[clazz]
+                else:
+                    device_distributions = dict(zip(device_list, rng.dirichlet([self.intra_zone_alpha] * num_devices)))
+
                 counts = {device_id: int(device_distributions[device_id] * len(class_indices)) for device_id in device_list}
                 while np.array(list(counts.values())).sum() < len(class_indices):
                     counts[max(counts.keys(), key=lambda d: device_distributions[d])] += 1
