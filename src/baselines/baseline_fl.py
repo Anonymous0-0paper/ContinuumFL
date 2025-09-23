@@ -269,7 +269,6 @@ class BaselineFLMethods:
         prox_step = 1.0
         temperature = 1.0
         recluster_every = 1
-        batch_eval_size = 64
 
         start_time = time.time()
         accuracies, losses = [], []
@@ -327,7 +326,7 @@ class BaselineFLMethods:
                     for sd in state_dicts:
                         m = copy.deepcopy(global_model)
                         m.load_state_dict(sd)
-                        logits = self.predict_logits(m, dataset, batch_eval_size)
+                        logits = self.predict_logits(m, dataset)
                         outputs.append(torch.softmax(torch.tensor(logits) / temperature, dim=1).numpy())
                     m = len(outputs)
                     F_mat = np.zeros((m, m))
@@ -385,11 +384,14 @@ class BaselineFLMethods:
             pointer += numel
         return new_state_dict
 
-    def predict_logits(self, model, dataset, batch_size=64):
+    def predict_logits(self, model, dataset):
+        device = self.config.device
+
+        model = copy.deepcopy(model)
+        model = model.to(device)
         model.eval()
         logits_list = []
         test_dataloader = dataset.get_global_dataloader(batch_size=64, is_train=False)
-        device = self.config.device
 
         with torch.no_grad():
             for data, target in test_dataloader:
