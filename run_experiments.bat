@@ -59,11 +59,6 @@ mkdir "results\baseline_comparison" 2>nul
 python main.py --dataset cifar100 --num_devices 100 --num_zones 20 --num_rounds 200 --run_baselines --create_visualizations --results_dir "results\baseline_comparison"
 goto end
 
-:test_framework
-echo Testing ContinuumFL Framework...
-python test_continuumfl.py
-goto end
-
 :invalid_choice
 echo ❌ Invalid choice. Please select 1-6.
 pause
