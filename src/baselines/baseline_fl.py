@@ -11,6 +11,7 @@ from typing import Dict, List, Tuple, Optional, Any
 from collections import defaultdict
 from sklearn.cluster import KMeans
 import copy
+import torch.nn.functional as _F
 
 class BaselineFLMethods:
     """
@@ -51,46 +52,48 @@ class BaselineFLMethods:
         start_time = time.time()
         
         # Training loop
-        for round_num in range(self.config.num_rounds):
-            # Sample participating devices
-            participating_devices = self._sample_devices(devices, 0.7)
-            
-            # Collect device updates
-            device_updates = []
-            device_weights = []
-            
-            for device_id in participating_devices:
-                device = devices[device_id]
-                if not device.is_active or not device.local_dataset:
-                    continue
-                
-                # Local training
-                local_model = copy.deepcopy(global_model)
-                local_model.load_state_dict(global_model.state_dict())
-                
-                # Train locally
-                training_result = self._train_local_model(
-                    local_model, device.local_dataloader, 
-                    self.config.local_epochs, self.config.learning_rate
-                )
-                
-                if training_result["success"]:
-                    device_updates.append(training_result["model_weights"])
-                    device_weights.append(device.dataset_size)
-            
-            # FedAvg aggregation
-            if device_updates:
-                global_weights = self._fedavg_aggregate(device_updates, device_weights)
-                global_model.load_state_dict(global_weights)
-            
-            # Evaluate
-            accuracy, loss = self._evaluate_model(global_model, dataset)
-            accuracies.append(accuracy)
-            losses.append(loss)
-            
-            if round_num % 10 == 0:
-                print(f"FedAvg Round {round_num + 1}: Accuracy={accuracy:.4f}, Loss={loss:.4f}")
-        
+        try:
+            for round_num in range(self.config.num_rounds):
+                round_time = time.time()
+
+                # Sample participating devices
+                participating_devices = self._sample_devices(devices, 0.7)
+
+                # Collect device updates
+                device_updates = []
+                device_weights = []
+
+                for device_id in participating_devices:
+                    device = devices[device_id]
+                    if not device.is_active or not device.local_dataset:
+                        continue
+
+                    # Local training
+                    local_model = copy.deepcopy(global_model)
+                    local_model.load_state_dict(global_model.state_dict())
+
+                    # Train locally
+                    training_result = self._train_local_model(
+                        local_model, device.local_dataloader,
+                        self.config.local_epochs, self.config.learning_rate
+                    )
+
+                    if training_result["success"]:
+                        device_updates.append(training_result["model_weights"])
+                        device_weights.append(device.dataset_size)
+
+                # FedAvg aggregation
+                if device_updates:
+                    global_weights = self._fedavg_aggregate(device_updates, device_weights)
+                    global_model.load_state_dict(global_weights)
+
+                # Evaluate
+                accuracy, loss = self._evaluate_model(global_model, dataset)
+                accuracies.append(accuracy)
+                losses.append(loss)
+                print(f"FedAvg Round {round_num + 1}: Accuracy={accuracy:.4f}, Loss={loss:.4f}, Time={time.time()-round_time:.2f}")
+        except KeyboardInterrupt:
+            print(f"Training (FedProx) interrupted by user")
         total_time = time.time() - start_time
         
         return {
@@ -116,43 +119,46 @@ class BaselineFLMethods:
         accuracies = []
         losses = []
         start_time = time.time()
-        
-        for round_num in range(self.config.num_rounds):
-            participating_devices = self._sample_devices(devices, 0.7)
-            device_updates = []
-            device_weights = []
-            
-            for device_id in participating_devices:
-                device = devices[device_id]
-                if not device.is_active or not device.local_dataset:
-                    continue
-                
-                # Local training with proximal term
-                local_model = copy.deepcopy(global_model)
-                global_weights = {name: param.clone() for name, param in global_model.named_parameters()}
-                
-                training_result = self._train_local_model_fedprox(
-                    local_model, device.local_dataloader, global_weights,
-                    self.config.local_epochs, self.config.learning_rate, mu
-                )
-                
-                if training_result["success"]:
-                    device_updates.append(training_result["model_weights"])
-                    device_weights.append(device.dataset_size)
-            
-            # Standard aggregation
-            if device_updates:
-                global_weights = self._fedavg_aggregate(device_updates, device_weights)
-                global_model.load_state_dict(global_weights)
-            
-            # Evaluate
-            accuracy, loss = self._evaluate_model(global_model, dataset)
-            accuracies.append(accuracy)
-            losses.append(loss)
-            
-            if round_num % 10 == 0:
-                print(f"FedProx Round {round_num + 1}: Accuracy={accuracy:.4f}, Loss={loss:.4f}")
-        
+
+        try:
+            for round_num in range(self.config.num_rounds):
+                round_time = time.time()
+
+                participating_devices = self._sample_devices(devices, 0.7)
+                device_updates = []
+                device_weights = []
+
+                for device_id in participating_devices:
+                    device = devices[device_id]
+                    if not device.is_active or not device.local_dataset:
+                        continue
+
+                    # Local training with proximal term
+                    local_model = copy.deepcopy(global_model)
+                    global_weights = {name: param.clone() for name, param in global_model.named_parameters()}
+
+                    training_result = self._train_local_model_fedprox(
+                        local_model, device.local_dataloader, global_weights,
+                        self.config.local_epochs, self.config.learning_rate, mu
+                    )
+
+                    if training_result["success"]:
+                        device_updates.append(training_result["model_weights"])
+                        device_weights.append(device.dataset_size)
+
+                # Standard aggregation
+                if device_updates:
+                    global_weights = self._fedavg_aggregate(device_updates, device_weights)
+                    global_model.load_state_dict(global_weights)
+
+                # Evaluate
+                accuracy, loss = self._evaluate_model(global_model, dataset)
+                accuracies.append(accuracy)
+                losses.append(loss)
+
+                print(f"FedProx Round {round_num + 1}: Accuracy={accuracy:.4f}, Loss={loss:.4f}, Time={time.time()-round_time:.2f}")
+        except KeyboardInterrupt:
+            print(f"Training (FedProx) interrupted by user")
         total_time = time.time() - start_time
         
         return {
@@ -188,52 +194,54 @@ class BaselineFLMethods:
         accuracies = []
         losses = []
         start_time = time.time()
-        
-        for round_num in range(self.config.num_rounds):
-            # Two-level aggregation
-            cluster_models = []
-            cluster_weights = []
-            
-            for cluster in clusters:
-                # Intra-cluster aggregation
-                cluster_device_updates = []
-                cluster_device_weights = []
-                
-                for device_id in cluster:
-                    device = devices[device_id]
-                    if not device.is_active or not device.local_dataset:
-                        continue
-                    
-                    if np.random.random() < 0.7:  # Participation probability
-                        local_model = copy.deepcopy(global_model)
-                        training_result = self._train_local_model(
-                            local_model, device.local_dataloader,
-                            self.config.local_epochs, self.config.learning_rate
-                        )
-                        
-                        if training_result["success"]:
-                            cluster_device_updates.append(training_result["model_weights"])
-                            cluster_device_weights.append(device.dataset_size)
-                
-                # Aggregate within cluster
-                if cluster_device_updates:
-                    cluster_model = self._fedavg_aggregate(cluster_device_updates, cluster_device_weights)
-                    cluster_models.append(cluster_model)
-                    cluster_weights.append(sum(cluster_device_weights))
-            
-            # Inter-cluster aggregation
-            if cluster_models:
-                global_weights = self._fedavg_aggregate(cluster_models, cluster_weights)
-                global_model.load_state_dict(global_weights)
-            
-            # Evaluate
-            accuracy, loss = self._evaluate_model(global_model, dataset)
-            accuracies.append(accuracy)
-            losses.append(loss)
-            
-            if round_num % 10 == 0:
-                print(f"HierFL Round {round_num + 1}: Accuracy={accuracy:.4f}, Loss={loss:.4f}")
-        
+        try:
+            for round_num in range(self.config.num_rounds):
+                round_time = time.time()
+
+                # Two-level aggregation
+                cluster_models = []
+                cluster_weights = []
+
+                for cluster in clusters:
+                    # Intra-cluster aggregation
+                    cluster_device_updates = []
+                    cluster_device_weights = []
+
+                    for device_id in cluster:
+                        device = devices[device_id]
+                        if not device.is_active or not device.local_dataset:
+                            continue
+
+                        if np.random.random() < 0.7:  # Participation probability
+                            local_model = copy.deepcopy(global_model)
+                            training_result = self._train_local_model(
+                                local_model, device.local_dataloader,
+                                self.config.local_epochs, self.config.learning_rate
+                            )
+
+                            if training_result["success"]:
+                                cluster_device_updates.append(training_result["model_weights"])
+                                cluster_device_weights.append(device.dataset_size)
+
+                    # Aggregate within cluster
+                    if cluster_device_updates:
+                        cluster_model = self._fedavg_aggregate(cluster_device_updates, cluster_device_weights)
+                        cluster_models.append(cluster_model)
+                        cluster_weights.append(sum(cluster_device_weights))
+
+                # Inter-cluster aggregation
+                if cluster_models:
+                    global_weights = self._fedavg_aggregate(cluster_models, cluster_weights)
+                    global_model.load_state_dict(global_weights)
+
+                # Evaluate
+                accuracy, loss = self._evaluate_model(global_model, dataset)
+                accuracies.append(accuracy)
+                losses.append(loss)
+
+                print(f"HierFL Round {round_num + 1}: Accuracy={accuracy:.4f}, Loss={loss:.4f}, Time={time.time()-round_time:.2f}")
+        except KeyboardInterrupt:
+            print(f"Training (HierFL) interrupted by user")
         total_time = time.time() - start_time
         
         return {
@@ -246,102 +254,154 @@ class BaselineFLMethods:
             "convergence_round": self._find_convergence(accuracies),
             "num_clusters": num_clusters
         }
-    
-    def _run_clusterfl(self, devices: Dict[str, Any], global_model: nn.Module, 
-                      dataset: Any) -> Dict[str, Any]:
+
+    def _run_clusterfl(self, devices, global_model, dataset):
         """
-        Run ClusterFL baseline.
-        
-        Clustering-based FL in feature space without spatial awareness.
+        Simple ClusterFL baseline:
+        - participation rate (default 0.7)
+        - softmax outputs → KL divergence → similarity matrix F
+        - proximal updates toward weighted neighbors
+        - FedAvg aggregation
         """
-        print("Running ClusterFL baseline...")
-        
-        accuracies = []
-        losses = []
+
+        participation_rate = 0.7
+        rho = 0.01
+        prox_step = 1.0
+        temperature = 1.0
+        recluster_every = 1
+        batch_eval_size = 64
+
         start_time = time.time()
-        
-        # Initialize with random clusters
-        device_list = [d for d in devices.values() if d.is_active and d.local_dataset]
-        num_clusters = min(self.config.num_zones, len(device_list) // 3)
-        
-        # Simple k-means clustering based on data characteristics
-        device_features = []
-        device_ids = []
-        
-        for device in device_list:
-            # Use dataset size and device resources as features
-            features = [
-                device.dataset_size / 1000.0,  # Normalized dataset size
-                device.resources.compute_capacity,
-                device.resources.bandwidth / 100.0  # Normalized bandwidth
-            ]
-            device_features.append(features)
-            device_ids.append(device.device_id)
-        
-        if len(device_features) > num_clusters:
-            kmeans = KMeans(n_clusters=num_clusters, random_state=42)
-            cluster_labels = kmeans.fit_predict(device_features)
-        else:
-            cluster_labels = list(range(len(device_features)))
-        
-        # Create clusters
-        clusters = defaultdict(list)
-        for device_id, label in zip(device_ids, cluster_labels):
-            clusters[label].append(device_id)
-        
-        for round_num in range(self.config.num_rounds):
-            # Cluster-based aggregation
-            cluster_models = []
-            cluster_weights = []
-            
-            for cluster_id, cluster_devices in clusters.items():
-                cluster_updates = []
-                cluster_device_weights = []
-                
-                for device_id in cluster_devices:
-                    device = devices[device_id]
-                    if np.random.random() < 0.7:  # Participation
-                        local_model = copy.deepcopy(global_model)
-                        training_result = self._train_local_model(
-                            local_model, device.local_dataloader,
-                            self.config.local_epochs, self.config.learning_rate
-                        )
-                        
-                        if training_result["success"]:
-                            cluster_updates.append(training_result["model_weights"])
-                            cluster_device_weights.append(device.dataset_size)
-                
-                if cluster_updates:
-                    cluster_model = self._fedavg_aggregate(cluster_updates, cluster_device_weights)
-                    cluster_models.append(cluster_model)
-                    cluster_weights.append(sum(cluster_device_weights))
-            
-            # Global aggregation
-            if cluster_models:
-                global_weights = self._fedavg_aggregate(cluster_models, cluster_weights)
+        accuracies, losses = [], []
+
+        # template for converting vectors ↔ state_dict
+        template_state_dict = global_model.state_dict()
+
+        W_dim = None
+        last_F = None
+
+        try:
+            for round_num in range(self.config.num_rounds):
+                round_time = time.time()
+
+                # --- Sample participants ---
+                participating = np.random.choice(list(devices.keys()),
+                                                 int(len(devices) * participation_rate),
+                                                 replace=False)
+                local_state_dicts = {}
+                device_weights = []
+
+                # --- Local training ---
+                for cid in participating:
+                    device = devices[cid]
+                    if not device.is_active or not device.local_dataset:
+                        continue
+
+                    local_model = copy.deepcopy(global_model)
+                    res = self._train_local_model(local_model, device.local_dataloader,
+                                            self.config.local_epochs, self.config.learning_rate)
+                    if not res.get("success", False):
+                        continue
+
+                    local_state_dicts[cid] = res["model_weights"]
+                    device_weights.append(device.dataset_size)
+
+                if not local_state_dicts:
+                    acc, loss = self._evaluate_model(global_model, dataset)
+                    accuracies.append(acc)
+                    losses.append(loss)
+                    continue
+
+                client_ids = list(local_state_dicts.keys())
+                state_dicts = [local_state_dicts[cid] for cid in client_ids]
+
+                # --- Convert to vectors ---
+                W = np.vstack([self.state_dict_to_vector(sd) for sd in state_dicts])
+                if W_dim is None:
+                    W_dim = W.shape[1]
+
+                # --- Compute similarity F ---
+                if (round_num % recluster_every == 0) or last_F is None:
+                    # compute average softmax outputs
+                    outputs = []
+                    for sd in state_dicts:
+                        m = copy.deepcopy(global_model)
+                        m.load_state_dict(sd)
+                        logits = self.predict_logits(m, dataset, batch_eval_size)
+                        outputs.append(torch.softmax(torch.tensor(logits) / temperature, dim=1).numpy())
+                    m = len(outputs)
+                    F_mat = np.zeros((m, m))
+                    for i in range(m):
+                        for j in range(m):
+                            p, q = outputs[i], outputs[j]
+                            F_mat[i, j] = np.mean(np.sum(p * np.log((p + 1e-10) / (q + 1e-10)), axis=1))
+                    # similarity = 1 - normalized KL
+                    F_mat = 1 - (F_mat / (F_mat.max() + 1e-10))
+                    F_mat = np.clip(F_mat, 0, 1)
+                    # normalize columns
+                    F_mat = F_mat / (F_mat.sum(axis=0, keepdims=True) + 1e-10)
+                    last_F = F_mat
+                else:
+                    F_mat = last_F
+
+                # --- Proximal update toward neighbors ---
+                W_new = W - prox_step * rho * (W - F_mat.T @ W)
+
+                # --- Convert back & aggregate (FedAvg) ---
+                updated_state_dicts = [self.vector_to_state_dict(vec, template_state_dict) for vec in W_new]
+                global_weights = self._fedavg_aggregate(updated_state_dicts, device_weights)
                 global_model.load_state_dict(global_weights)
-            
-            # Evaluate
-            accuracy, loss = self._evaluate_model(global_model, dataset)
-            accuracies.append(accuracy)
-            losses.append(loss)
-            
-            if round_num % 10 == 0:
-                print(f"ClusterFL Round {round_num + 1}: Accuracy={accuracy:.4f}, Loss={loss:.4f}")
-        
-        total_time = time.time() - start_time
-        
+
+                # --- Eval ---
+                acc, loss = self._evaluate_model(global_model, dataset)
+                accuracies.append(acc)
+                losses.append(loss)
+                if round_num % 10 == 0:
+                    print(f"Round {round_num + 1}: Accuracy={acc:.4f}, Loss={loss:.4f}, Time={time.time()-round_time:.2f}")
+        except KeyboardInterrupt:
+            print("Training (ClusterFL) interrupted by user")
         return {
             "method": "ClusterFL",
             "final_accuracy": accuracies[-1] if accuracies else 0.0,
             "final_loss": losses[-1] if losses else float('inf'),
             "accuracies": accuracies,
             "losses": losses,
-            "total_time": total_time,
-            "convergence_round": self._find_convergence(accuracies),
-            "num_clusters": len(clusters)
+            "total_time": time.time() - start_time
         }
-    
+
+    def state_dict_to_vector(self, state_dict: dict) -> np.ndarray:
+        vecs = []
+        for key in state_dict:
+            vecs.append(state_dict[key].detach().cpu().numpy().ravel())
+        return np.concatenate(vecs)
+
+    def vector_to_state_dict(self, vec: np.ndarray, template_state_dict: dict) -> dict:
+        new_state_dict = {}
+        pointer = 0
+        for key, param in template_state_dict.items():
+            shape = param.shape
+            numel = param.numel()
+            new_state_dict[key] = torch.tensor(vec[pointer:pointer+numel].reshape(shape))
+            pointer += numel
+        return new_state_dict
+
+    def predict_logits(self, model, dataset, batch_size=64):
+        model.eval()
+        logits_list = []
+        test_dataloader = dataset.get_global_dataloader(batch_size=64, is_train=False)
+        device = self.config.device
+
+        with torch.no_grad():
+            for data, target in test_dataloader:
+                if device == 'cuda':
+                    data, target = data.cuda(), target.cuda()
+                if self.config.dataset_name == 'shakespeare':
+                    out, _ = model(data)
+                else:
+                    out = model(data)
+                logits_list.append(out.detach().cpu().numpy())
+        return np.vstack(logits_list)
+
     def _sample_devices(self, devices: Dict[str, Any], participation_rate: float) -> List[str]:
         """Sample devices for participation"""
         available_devices = [
