@@ -5,12 +5,9 @@ Handles dataset downloading, preprocessing, and non-IID distribution across zone
 
 import os
 import random
-from math import floor
-import time
 import datasets
 import numpy as np
 import torch
-import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, Subset
 import torchvision
 import torchvision.transforms as transforms
@@ -18,9 +15,8 @@ from typing import Dict, List, Tuple, Optional, Any, Union
 import pickle
 import json
 from collections import defaultdict
-from datasets import load_dataset, DownloadConfig, concatenate_datasets
+from datasets import load_dataset, DownloadConfig
 from src.core.zone import Zone
-from src.models.model_factory import FEMNISTNet
 
 try:
     import requests
@@ -32,7 +28,6 @@ try:
 except ImportError:
     print("Warning: zipfile not available")
     zipfile = None
-import gzip
 
 class FederatedDataset:
     """Base class for federated datasets with spatial non-IID distribution"""

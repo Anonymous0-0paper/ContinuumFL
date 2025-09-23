@@ -88,6 +88,8 @@ def parse_arguments():
     # Experiment options
     parser.add_argument('--run_baselines', action='store_true',
                        help='Run baseline comparison')
+    parser.add_argument('--baselines_only', action='store_true',
+                        help='Run baselines only')
     parser.add_argument('--save_results', action='store_true', default=True,
                        help='Save experiment results')
     parser.add_argument('--create_visualizations', action='store_true', default=True,
@@ -209,7 +211,8 @@ def setup_configuration(args) -> ContinuumFLConfig:
     
     # Validate configuration
     config.validate_config()
-    
+
+    config.baselines_only = args.baselines_only
     return config
 
 def print_experiment_info(config: ContinuumFLConfig, args):
@@ -252,9 +255,11 @@ def run_continuum_fl_experiment(config: ContinuumFLConfig) -> Tuple[Dict[str, An
     coordinator.initialize_system()
     
     # Run federated learning
-    print("🎯 Starting federated learning...")
-    training_results = coordinator.run_federated_learning()
-    print("✅ ContinuumFL experiment completed!")
+    training_results = {}
+    if not config.baselines_only:
+        print("🎯 Starting federated learning...")
+        training_results = coordinator.run_federated_learning()
+        print("✅ ContinuumFL experiment completed!")
     return training_results, coordinator
 
 def run_baseline_experiments(coordinator: ContinuumFLCoordinator) -> Dict[str, Any]:
@@ -354,11 +359,12 @@ def main():
         # Run main ContinuumFL experiment
         training_results, coordinator = run_continuum_fl_experiment(config)
         print(f"Training Results: {training_results}")
+
         # Initialize baseline results
         baseline_results = {}
         
         # Run baseline comparisons if requested
-        if args.run_baselines:
+        if args.run_baselines or args.baselines_only:
             baseline_results = run_baseline_experiments(coordinator)
         # Create visualizations if requested
         if args.create_visualizations:
