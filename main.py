@@ -90,6 +90,8 @@ def parse_arguments():
                        help='Run baseline comparison')
     parser.add_argument('--baselines_only', action='store_true',
                         help='Run baselines only')
+    parser.add_argument('--baseline_methods', nargs='+', default=["FedAvg", "FedProx", "HierFL", "ClusterFL"],
+                        help='Baseline Methods to compare against')
     parser.add_argument('--save_results', action='store_true', default=True,
                        help='Save experiment results')
     parser.add_argument('--create_visualizations', action='store_true', default=True,
@@ -213,6 +215,7 @@ def setup_configuration(args) -> ContinuumFLConfig:
     config.validate_config()
 
     config.baselines_only = args.baselines_only
+    config.baselines = args.baseline_methods
     return config
 
 def print_experiment_info(config: ContinuumFLConfig, args):
