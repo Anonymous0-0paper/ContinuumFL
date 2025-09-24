@@ -1,0 +1,54 @@
+{
+  "system_configuration": {
+    "num_devices": 100,
+    "num_zones": 6,
+    "num_rounds": 200,
+    "dataset": "cifar100"
+  },
+  "final_performance": {
+    "continuum_fl": {
+      "accuracy": 0.4207,
+      "loss": 4.348624115934768,
+      "total_communication_cost": 1267236.7998657227
+    }
+  },
+  "aggregation_statistics": {
+    "total_rounds": 200,
+    "zone_participation_rates": {
+      "zone_0": 1.0,
+      "zone_1": 1.0,
+      "zone_2": 1.0,
+      "zone_3": 1.0,
+      "zone_4": 1.0,
+      "zone_5": 1.0
+    },
+    "average_communication_cost_mb": 6340.0394287109375,
+    "spatial_correlations": {
+      "average": 0.9955183578177044,
+      "maximum": 0.9999999992944921,
+      "total_pairs": 21
+    },
+    "staleness_distribution": {
+      "zone_0": 0,
+      "zone_1": 0,
+      "zone_2": 0,
+      "zone_3": 0,
+      "zone_4": 0,
+      "zone_5": 0
+    },
+    "current_zone_weights": {
+      "zone_0": 0.18568625859062202,
+      "zone_1": 0.21318322348028526,
+      "zone_2": 0.1762515375370286,
+      "zone_3": 0.21292736610331434,
+      "zone_4": 0.20057742087306424,
+      "zone_5": 0.011374193415685704
+    }
+  },
+  "zone_discovery_statistics": {
+    "rounds_completed": 1,
+    "average_stability": 1.0,
+    "total_migrations": 0,
+    "migration_history_size": 0
+  }
+}

@@ -1,0 +1,90 @@
+{
+  "system_configuration": {
+    "num_devices": 100,
+    "num_zones": 18,
+    "num_rounds": 200,
+    "dataset": "femnist"
+  },
+  "final_performance": {
+    "continuum_fl": {
+      "accuracy": 0.46024,
+      "loss": 2.3676399734928784,
+      "total_communication_cost": 208771.1456298828
+    }
+  },
+  "aggregation_statistics": {
+    "total_rounds": 200,
+    "zone_participation_rates": {
+      "zone_0": 1.0,
+      "zone_1": 1.0,
+      "zone_2": 1.0,
+      "zone_3": 1.0,
+      "zone_4": 1.0,
+      "zone_5": 1.0,
+      "zone_6": 1.0,
+      "zone_7": 1.0,
+      "zone_8": 1.0,
+      "zone_9": 1.0,
+      "zone_10": 1.0,
+      "zone_11": 1.0,
+      "zone_12": 1.0,
+      "zone_13": 1.0,
+      "zone_14": 1.0,
+      "zone_15": 1.0,
+      "zone_16": 1.0,
+      "zone_17": 1.0
+    },
+    "average_communication_cost_mb": 1043.855728149414,
+    "spatial_correlations": {
+      "average": 0.999971710372383,
+      "maximum": 1.0000052168512559,
+      "total_pairs": 171
+    },
+    "staleness_distribution": {
+      "zone_0": 0,
+      "zone_1": 0,
+      "zone_2": 0,
+      "zone_3": 0,
+      "zone_4": 0,
+      "zone_5": 0,
+      "zone_6": 0,
+      "zone_7": 0,
+      "zone_8": 0,
+      "zone_9": 0,
+      "zone_10": 0,
+      "zone_11": 0,
+      "zone_12": 0,
+      "zone_13": 0,
+      "zone_14": 0,
+      "zone_15": 0,
+      "zone_16": 0,
+      "zone_17": 0
+    },
+    "current_zone_weights": {
+      "zone_0": 0.06340014327451131,
+      "zone_1": 0.06012485053445813,
+      "zone_2": 0.06585175126739716,
+      "zone_3": 0.06670124114544974,
+      "zone_4": 0.045931950171172756,
+      "zone_5": 0.03730162671451404,
+      "zone_6": 0.03860343921836263,
+      "zone_7": 0.05229423198070315,
+      "zone_8": 0.04621111398995989,
+      "zone_9": 0.06193106919972708,
+      "zone_10": 0.05839377586176558,
+      "zone_11": 0.060960790107990596,
+      "zone_12": 0.03807900490676095,
+      "zone_13": 0.06577985952661008,
+      "zone_14": 0.06657257584271871,
+      "zone_15": 0.06618352342619264,
+      "zone_16": 0.05720536102498137,
+      "zone_17": 0.04847369180672416
+    }
+  },
+  "zone_discovery_statistics": {
+    "rounds_completed": 1,
+    "average_stability": 1.0,
+    "total_migrations": 0,
+    "migration_history_size": 0
+  }
+}
