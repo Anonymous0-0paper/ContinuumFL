@@ -429,7 +429,7 @@ class BaselineFLMethods:
             device = 'cpu'
         
         model.train()
-        optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=1e-4)
+        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
         criterion = nn.CrossEntropyLoss()
         
         # Move criterion to same device
