@@ -1,0 +1,7 @@
+Compression analysis (4 images):
+
+Fig. x: Comparative analysis of accuracy/compression tradeoffs using top-k compression on delta-updates with [10\%, 40\%, 60\%, 90\%, none].
+(a) On 45 Shakespeare speakers, compression changes accuracy by only 1–2\%, offering inexpensive communication savings.
+(b) On 50,000 FEMNIST samples, heavy compression (90\%) outperforms little or none.
+(c) On CIFAR100, light compression (10\%) improves accuracy by 5–10\% and stabilizes updates.
+(d) Communication overhead across datasets for different compression levels.

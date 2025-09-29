@@ -1,0 +1,52 @@
+{
+  "system_configuration": {
+    "num_devices": 100,
+    "num_zones": 10,
+    "num_rounds": 0,
+    "dataset": "shakespeare"
+  },
+  "final_performance": {
+    "continuum_fl": {
+      "accuracy": 0.0,
+      "loss": Infinity,
+      "total_communication_cost": 0
+    }
+  },
+  "aggregation_statistics": {},
+  "zone_discovery_statistics": {
+    "rounds_completed": 1,
+    "average_stability": 1.0,
+    "total_migrations": 0,
+    "migration_history_size": 0
+  },
+  "baseline_comparison": {
+    "ClusterFL": {
+      "method": "ClusterFL",
+      "final_accuracy": 0.5239712002997738,
+      "final_loss": 1.61048424355724,
+      "accuracies": [
+        0.20703130227640754,
+        0.3645918927237932,
+        0.43919810500113754,
+        0.47047227761198024,
+        0.48853498922687794,
+        0.5029107503713716,
+        0.5119829235978213,
+        0.5189780924213429,
+        0.5239712002997738
+      ],
+      "losses": [
+        3.0581595328377715,
+        2.2575024712694227,
+        1.9243708136923798,
+        1.798873790499281,
+        1.7279085990152525,
+        1.680022344304585,
+        1.6500554527830857,
+        1.6266519573350278,
+        1.61048424355724
+      ],
+      "total_time": 88158.47503089905
+    }
+  }
+}

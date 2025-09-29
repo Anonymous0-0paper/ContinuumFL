@@ -1,0 +1,5 @@
+Zone sensibility (3 images):
+
+Fig. x: Varying the number of physical zones while fixing the number of devices, the performance of our framework changes.
+We investigate the global model accuracy on (a) Shakespeare, (b) FEMNIST, (c) CIFAR100 setting [5, 10, 15] physical zones.
+Generally our framework achieves higher accuracy if it is given more zones for the same amount of client devices.

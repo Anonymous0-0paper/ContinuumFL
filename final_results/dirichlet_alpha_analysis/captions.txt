@@ -1,0 +1,5 @@
+Dirichlet alpha analysis (1 image):
+
+Fig. x: Accuracy trajectory of our framework on CIFAR100 using different alpha values to distribute data across devices via dirichlet distribution.
+We tune both intra-zone alpha to control data distribution within a zone and inter-zone alpha to control data distribution acros zones,
+where lower alpha values lead to a more Non-IID-like distribution.

@@ -1,0 +1,4 @@
+Framework behavior under four failure scenarios with varying device/zone failure rates: Little (0.05/0.02), Medium (0.10/0.05), Heavy (0.20/0.10), and None.
+(a) On 45 Shakespeare speakers, the framework follows the “No Failure” trend under Little and Medium scenarios, reaching the same maximum accuracy.
+(b) On 50,000 FEMNIST samples, heavier failures increase variance and instability, yet maximum accuracy is maintained or exceeded.
+(c) On CIFAR100, even minor failures prevent the framework from reaching peak accuracy.

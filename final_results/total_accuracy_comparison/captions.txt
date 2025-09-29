@@ -1,0 +1,11 @@
+Convergence-speedup (table):
+
+Tab. x: Number of rounds needed to reach a specified accuracy threshold on different datasets as well as recording the speedup of ContinuumFL compared to baselines.
+
+---
+
+Total accuracy cifar100 (3 image):
+
+Fig. x: Accuracy trajectory of ContinuumFL across communication rounds, compared against baseline methods FedAvg, FedProx, HierFL and ClusterFL.
+We illustrate how our approach achieves faster or comparably equal convergence and higher final accuracy relative to the baselines while reducing communication overhead by applying top-k compression.
+We use different datasets for each scenario: (a) Shakespeare, (b) FEMNIST, (c) CIFAR100.
