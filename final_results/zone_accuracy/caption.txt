@@ -1,0 +1,2 @@
+Fig. x: Zone-specific test accuracy during the round of best global accuracy using 10 zones.
+The heatmap reveals heterogeneity in model performance across different data partitions.
