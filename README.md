@@ -201,18 +201,6 @@ ContinuumFL is designed for research in:
 - **Heterogeneous Systems**: Handling device and data heterogeneity
 - **IoT and Smart Cities**: Large-scale distributed learning
 
-## 📝 Citation
-
-If you use ContinuumFL in your research, please cite:
-
-```bibtex
-@article{continuumfl2024,
-  title={ContinuumFL: Federated Learning with Spatial-Aware Aggregation in non-IID Edge Zones},
-  author={Younesi, Abolfazl and Kiss, Leon and Samani, Zahra Najafabadi and Fahringer, Thomas},
-  journal={IEEE Conference},
-  year={2024}
-}
-```
 
 ## 🛠️ Development
 
@@ -266,7 +254,6 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 
 For questions and support:
 - Open an issue on GitHub
-- Contact: [your-email@domain.com]
 
 ## 🙏 Acknowledgments
 
@@ -277,6 +264,7 @@ For questions and support:
 ---
 
 **ContinuumFL** - Bringing spatial awareness to federated learning in edge environments! 🌐🤖"# ContinuumFL" 
+
 
 
 
