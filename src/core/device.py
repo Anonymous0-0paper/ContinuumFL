@@ -70,14 +70,16 @@ class EdgeDevice:
         self.privacy_budget = 1.0
         self.noise_multiplier = 0.0
         
-    def set_local_dataset(self, dataset: torch.utils.data.Dataset, 
-                         batch_size: int = 32, num_workers: int = 0):
+    def set_local_dataset(self, dataset: torch.utils.data.Dataset,
+                         batch_size: int = 32, num_workers: int = 4):
         """Set local dataset and create dataloader"""
         self.local_dataset = dataset
         self.dataset_size = len(dataset)
+        use_cuda = torch.cuda.is_available()
         self.local_dataloader = torch.utils.data.DataLoader(
-            dataset, batch_size=batch_size, shuffle=True, 
-            num_workers=num_workers, drop_last=False
+            dataset, batch_size=batch_size, shuffle=True,
+            num_workers=num_workers, pin_memory=use_cuda,
+            persistent_workers=num_workers > 0, drop_last=False
         )
     
     def set_local_model(self, model: nn.Module):
@@ -94,53 +96,57 @@ class EdgeDevice:
         if self.local_dataloader is None or not self.is_active:
             return {"success": False, "reason": "No dataset or inactive device"}
         start_time = time.time()
-        
+
         # Initialize local model with global weights
         self.local_model.load_state_dict(global_model.state_dict())
 
-        # Move model to appropriate device
-        if device == 'cuda' and torch.cuda.is_available():
+        use_cuda = device == 'cuda' and torch.cuda.is_available()
+        if use_cuda:
             self.local_model = self.local_model.cuda()
         else:
             self.local_model = self.local_model.cpu()
-            device = 'cpu'  # Ensure consistency
-        
+            device = 'cpu'
+
         self.local_model.train()
-        # Setup optimizer
         optimizer = torch.optim.Adam(self.local_model.parameters(), lr=learning_rate)
         criterion = nn.CrossEntropyLoss()
-        
-        # Move criterion to same device
-        if device == 'cuda':
-            criterion = criterion.cuda()
-        
+
+        scaler = torch.amp.GradScaler('cuda') if use_cuda else None
+
         total_loss = 0.0
         total_correct = 0
         num_batches = 0
-        # Local training loop
         for epoch in range(epochs):
-            for batch_idx, (data, target) in enumerate(self.local_dataloader):
-                # Move data to device
-                if device == 'cuda':
-                    data, target = data.cuda(), target.cuda()
+            for data, target in self.local_dataloader:
+                if use_cuda:
+                    data, target = data.cuda(non_blocking=True), target.cuda(non_blocking=True)
 
                 optimizer.zero_grad()
-                if isinstance(self.local_model, ShakespeareLSTM):
-
-                    output, _ = self.local_model(data)
+                if use_cuda:
+                    with torch.amp.autocast('cuda'):
+                        if isinstance(self.local_model, ShakespeareLSTM):
+                            output, _ = self.local_model(data)
+                        else:
+                            output = self.local_model(data)
+                        loss = criterion(output, target)
+                    scaler.scale(loss).backward()
+                    scaler.step(optimizer)
+                    scaler.update()
                 else:
-                    output = self.local_model(data)
-                predictions = torch.argmax(output, dim=1)
-                correct = (predictions == target).float().sum()
-                total_correct += correct.detach().cpu().numpy()
-                loss = criterion(output, target)
-                loss.backward()
-                optimizer.step()
+                    if isinstance(self.local_model, ShakespeareLSTM):
+                        output, _ = self.local_model(data)
+                    else:
+                        output = self.local_model(data)
+                    loss = criterion(output, target)
+                    loss.backward()
+                    optimizer.step()
 
+                predictions = torch.argmax(output.detach(), dim=1)
+                total_correct += (predictions == target).float().sum().cpu().item()
                 total_loss += loss.detach().item()
                 num_batches += 1
 
-        if device == 'cuda':
+        if use_cuda:
             torch.cuda.empty_cache()
         gc.collect()
 

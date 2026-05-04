@@ -122,9 +122,19 @@ class ZoneDiscovery:
                             max_sim = sim
                             best_pair = (i, j)
             
-            # If no valid merge found, break
+            # If no valid merge found, force-merge the most similar pair
+            # regardless of threshold to reach the target number of zones
             if best_pair is None:
-                break
+                for i, cluster_i in enumerate(clusters):
+                    for j, cluster_j in enumerate(clusters):
+                        if i < j:
+                            sim = cluster_similarities[i][j]
+                            new_size = len(cluster_i) + len(cluster_j)
+                            if sim > max_sim and new_size <= self.max_zone_size:
+                                max_sim = sim
+                                best_pair = (i, j)
+                if best_pair is None:
+                    break  # Cannot merge further due to size constraints
             # Merge the best pair
             i, j = best_pair
             merged_cluster = clusters[i].union(clusters[j])

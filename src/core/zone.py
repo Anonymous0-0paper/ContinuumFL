@@ -181,33 +181,33 @@ class Zone:
         device_failure_probability = args["device_failure_probability"]
         device_updates = {}
 
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        if comp_device == 'cuda':
-            max_workers = len(participating_devices)
-        else:
-            max_workers = min(len(participating_devices), os.cpu_count())
-
         device_args = [
             {"device": self.devices[device_id], "model": global_model, "epochs": epochs,
              "learning_rate": learning_rate,
              "comp_device": comp_device,
              "enable_failure": enable_failure,
              "device_failure_probability": device_failure_probability} for device_id in participating_devices]
-        with ThreadPoolExecutor(max_workers=max(1, max_workers)) as executor:
-            futures = [executor.submit(run_training, args) for args in device_args]
 
-            for f in as_completed(futures):
-                res = f.result()
-                if res is None:
-                    continue
+        def _process_result(res):
+            if res is None:
+                return
+            res_dict, device_id = res
+            if res_dict["success"] and device_id in self.devices:
+                device_updates[device_id] = res_dict["gradient"]
+                device_participation[device_id] += 1
+                self.devices[device_id].participation_history.append(1)
 
-                res_dict, device_id = res
-                if res_dict["success"]  and device_id in self.devices:
-                    device_updates[device_id] = res_dict["gradient"]
-                    device_participation[device_id] += 1
-
-                    # Update device reliability based on participation
-                    self.devices[device_id].participation_history.append(1)
+        if comp_device == 'cuda':
+            # CUDA kernels serialize across threads — run sequentially to avoid overhead
+            for args in device_args:
+                _process_result(run_training(args))
+        else:
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            max_workers = min(len(participating_devices), os.cpu_count())
+            with ThreadPoolExecutor(max_workers=max(1, max_workers)) as executor:
+                futures = [executor.submit(run_training, args) for args in device_args]
+                for f in as_completed(futures):
+                    _process_result(f.result())
         intra_start = time.time()
         aggregated_weights = self.intra_zone_aggregation(device_updates)
         intra_time = time.time() - intra_start

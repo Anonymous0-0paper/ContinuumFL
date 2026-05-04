@@ -355,8 +355,7 @@ class BaselineFLMethods:
                 acc, loss = self._evaluate_model(global_model, dataset)
                 accuracies.append(acc)
                 losses.append(loss)
-                if round_num % 10 == 0:
-                    print(f"Round {round_num + 1}: Accuracy={acc:.4f}, Loss={loss:.4f}, Time={time.time()-round_time:.2f}")
+                print(f"ClusterFL Round {round_num + 1}: Accuracy={acc:.4f}, Loss={loss:.4f}, Time={time.time()-round_time:.2f}")
         except KeyboardInterrupt:
             print("Training (ClusterFL) interrupted by user")
         return {
@@ -429,35 +428,38 @@ class BaselineFLMethods:
             device = 'cpu'
         
         model.train()
-        optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=1e-4)
+        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
         criterion = nn.CrossEntropyLoss()
-        
-        # Move criterion to same device
-        if device == 'cuda':
-            criterion = criterion.cuda()
-        
+        use_cuda = device == 'cuda'
+        scaler = torch.amp.GradScaler('cuda') if use_cuda else None
+
         try:
             for epoch in range(epochs):
-                for batch_idx, (data, target) in enumerate(dataloader):
-                    # Move data to device
-                    if device == 'cuda':
-                        data, target = data.cuda(), target.cuda()
-                    
+                for data, target in dataloader:
+                    if use_cuda:
+                        data, target = data.cuda(non_blocking=True), target.cuda(non_blocking=True)
+
                     optimizer.zero_grad()
-                    output = model(data)
-                    
-                    # Handle different model outputs
-                    if isinstance(output, tuple):
-                        output = output[0]
-                    
-                    loss = criterion(output, target)
-                    loss.backward()
-                    optimizer.step()
-            
-            # Move model back to CPU for state dict
-            if device == 'cuda':
+                    if use_cuda:
+                        with torch.amp.autocast('cuda'):
+                            output = model(data)
+                            if isinstance(output, tuple):
+                                output = output[0]
+                            loss = criterion(output, target)
+                        scaler.scale(loss).backward()
+                        scaler.step(optimizer)
+                        scaler.update()
+                    else:
+                        output = model(data)
+                        if isinstance(output, tuple):
+                            output = output[0]
+                        loss = criterion(output, target)
+                        loss.backward()
+                        optimizer.step()
+
+            if use_cuda:
                 model = model.cpu()
-            
+
             return {
                 "success": True,
                 "model_weights": model.state_dict()
@@ -472,35 +474,52 @@ class BaselineFLMethods:
         if dataloader is None or len(dataloader) == 0:
             return {"success": False}
         
+        use_cuda = self.config.device == 'cuda' and torch.cuda.is_available()
+        if use_cuda:
+            model = model.cuda()
+            global_weights = {k: v.cuda() for k, v in global_weights.items()}
         model.train()
-        optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=1e-4)
+        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
         criterion = nn.CrossEntropyLoss()
-        
+        scaler = torch.amp.GradScaler('cuda') if use_cuda else None
+
         try:
             for epoch in range(epochs):
-                for batch_idx, (data, target) in enumerate(dataloader):
-                    if self.config.device == 'cuda' and torch.cuda.is_available():
-                        data, target = data.cuda(), target.cuda()
-                    
+                for data, target in dataloader:
+                    if use_cuda:
+                        data, target = data.cuda(non_blocking=True), target.cuda(non_blocking=True)
+
                     optimizer.zero_grad()
-                    output = model(data)
-                    
-                    if isinstance(output, tuple):
-                        output = output[0]
-                    
-                    # Standard loss
-                    loss = criterion(output, target)
-                    
-                    # Add proximal term
-                    proximal_term = 0.0
-                    for name, param in model.named_parameters():
-                        if name in global_weights:
-                            proximal_term += torch.sum((param - global_weights[name]) ** 2)
-                    
-                    total_loss = loss + (mu / 2) * proximal_term
-                    total_loss.backward()
-                    optimizer.step()
-            
+                    if use_cuda:
+                        with torch.amp.autocast('cuda'):
+                            output = model(data)
+                            if isinstance(output, tuple):
+                                output = output[0]
+                            loss = criterion(output, target)
+                            proximal_term = sum(
+                                torch.sum((p - global_weights[n]) ** 2)
+                                for n, p in model.named_parameters() if n in global_weights
+                            )
+                            total_loss = loss + (mu / 2) * proximal_term
+                        scaler.scale(total_loss).backward()
+                        scaler.step(optimizer)
+                        scaler.update()
+                    else:
+                        output = model(data)
+                        if isinstance(output, tuple):
+                            output = output[0]
+                        loss = criterion(output, target)
+                        proximal_term = sum(
+                            torch.sum((p - global_weights[n]) ** 2)
+                            for n, p in model.named_parameters() if n in global_weights
+                        )
+                        total_loss = loss + (mu / 2) * proximal_term
+                        total_loss.backward()
+                        optimizer.step()
+
+            if use_cuda:
+                model = model.cpu()
+
             return {
                 "success": True,
                 "model_weights": model.state_dict()

@@ -1,30 +1,29 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=CFL
-#SBATCH --partition=IFItitan
+#SBATCH --job-name=CFL-quick
+#SBATCH --partition=IFIgpu2070
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=2
 #SBATCH --mail-type=BEGIN,END,FAIL 
 #SBATCH --mail-user=abolfazl.Younesi@uibk.ac.at 
 #SBATCH --account=DPS
-#SBATCH --mem=24G
+#SBATCH --mem=8G
 #SBATCH --gres=gpu:1
-#SBATCH --time=02-00:00:00
+#SBATCH --time=00:30:00
 #SBATCH --output=logs/slurm.%x.%j.out
 #SBATCH --error=logs/slurm.%x.%j.err
 
-# Slurm launcher for ContinuumFL.
+# Slurm launcher for ContinuumFL - QUICK preset
+# Optimized for fast testing with minimal resources
 #
-# Partition guidance from the request:
-# - IFIall: nodes gc1-gc19
-# - IFIgpu2070: nodes gc1-gc7, max time 12:00:00, default 00:30:00
-# - IFIgpu2070S: nodes gc8-gc16
-# - IFItitan: node gc17
-# - IFIgpu4090: node gc18, restricted to group TCS
-# - IFIgpuL40S: node gc19, 8xL40 GPUs, max time 02:00:00, default 00:30:00
+# This script runs the quick preset which includes:
+# - 20 devices, 5 zones
+# - 10 training rounds
+# - 2 local epochs
+# - Batch size 16
+# - No visualizations or baselines
 #
-# Edit the SBATCH directives above to match the target partition or resource
-# request. Request only the GPUs you need, especially on IFIgpuL40S.
+# Expected runtime: 5-10 minutes
 
 set -euo pipefail
 
@@ -32,21 +31,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 source "$PROJECT_ROOT/scripts/continuumfl_common.sh"
 
-DEFAULT_PRESET="standard"
+DEFAULT_PRESET="quick"
 PRESET="${1:-$DEFAULT_PRESET}"
 shift || true
 
-# User-editable defaults for the Slurm job.
-DATASET="femnist"
-MAX_SAMPLES=-1
-NUM_DEVICES=100
-NUM_ZONES=20
-MIN_ZONE_SIZE=4
-MAX_ZONE_SIZE=15
-NUM_ROUNDS=200
-LOCAL_EPOCHS=5
+# User-editable defaults for the quick Slurm job
+DATASET="cifar100"
+MAX_SAMPLES=500
+NUM_DEVICES=20
+NUM_ZONES=5
+MIN_ZONE_SIZE=2
+MAX_ZONE_SIZE=6
+NUM_ROUNDS=10
+LOCAL_EPOCHS=2
 LEARNING_RATE=0.01
-BATCH_SIZE=32
+BATCH_SIZE=16
 SPATIAL_WEIGHT=0.4
 DATA_WEIGHT=0.4
 NETWORK_WEIGHT=0.2
@@ -54,18 +53,18 @@ SPATIAL_REGULARIZATION=0.1
 CORRELATION_THRESHOLD=0.05
 COMPRESSION_RATE=0.1
 ENABLE_COMPRESSION=false
-INTRA_ZONE_ALPHA=100
-INTER_ZONE_ALPHA=10
+INTRA_ZONE_ALPHA=10
+INTER_ZONE_ALPHA=0.3
 ASYNC_AGGREGATION=false
 ENABLE_FAILURE=false
 DEVICE_FAILURE_PROBABILITY=0.05
 ZONE_FAILURE_PROBABILITY=0.02
 SHAKESPEARE_NUM_SPEAKERS=35
-RUN_BASELINES=true
+RUN_BASELINES=false
 BASELINES_ONLY=false
 BASELINE_METHODS=(FedAvg FedProx HierFL ClusterFL)
 SAVE_RESULTS=true
-CREATE_VISUALIZATIONS=true
+CREATE_VISUALIZATIONS=false
 DEVICE="cuda"
 RANDOM_SEED=42
 LOG_DIR="$PROJECT_ROOT/logs"
@@ -157,12 +156,13 @@ build_main_args
 
 CMD=("$PYTHON_BIN" "$PROJECT_ROOT/main.py" "${MAIN_ARGS[@]}" "$@")
 
-echo "Slurm job: ${SLURM_JOB_ID:-local}"
+echo "🚀 QUICK TEST - Slurm job: ${SLURM_JOB_ID:-local}"
 echo "Preset: $PRESET"
 echo "Run name: $RUN_NAME"
 echo "Results: $RESULTS_DIR"
 echo "Log: $LOG_DIR/run.log"
 echo "Command: ${CMD[*]}"
+echo "Expected duration: 5-10 minutes"
 
 if bool_true "${DRY_RUN:-false}"; then
     exit 0
