@@ -15,7 +15,8 @@ ContinuumFL/
 ├── 📄 README.md                    # Comprehensive documentation
 ├── 📄 INSTALL.md                   # Installation & quick start guide
 ├── 📄 example_config.json          # Example configuration
-├── 📄 run_experiments.bat/.sh      # Automated experiment scripts
+├── 📄 run_experiments.bat/.sh      # Interactive automated experiment scripts
+├── 📁 scripts/                     # Local and Slurm launchers for presets
 ├── 📄 continuumfl.tex              # Original research paper
 ├── 📁 src/                         # Core implementation
 │   ├── 📄 continuum_fl_coordinator.py  # Main FL coordinator
@@ -119,6 +120,12 @@ run_experiments.bat
 
 # Linux/Mac  
 bash run_experiments.sh
+
+# Local preset launcher
+bash scripts/run_continuumfl.sh standard
+
+# Slurm preset launcher
+sbatch scripts/run_continuumfl_slurm.sh standard
 ```
 
 ## 📊 Expected Performance

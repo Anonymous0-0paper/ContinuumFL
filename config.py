@@ -18,7 +18,7 @@ class ContinuumFLConfig:
             'data': 0.4,       # ω2 - data similarity weight  
             'network': 0.2     # ω3 - network similarity weight
         }
-        self.similarity_threshold = 0.6  # θ - clustering threshold
+        self.similarity_threshold = 0.8  # θ - clustering threshold
         self.min_zone_size = 4           # n_min
         self.max_zone_size = 15          # n_max
         self.distance_scaling = 10.0     # σ - distance scaling parameter
@@ -56,7 +56,7 @@ class ContinuumFLConfig:
         self.deadline_constraint = 60    # seconds - round deadline
         
         # Device Heterogeneity Simulation
-        self.device_compute_range = (1.0, 10.0)     # GFLOPS range
+        self.device_compute_range = (10.0, 100.0)     # GFLOPS range
         self.device_memory_range = (1.0, 8.0)       # GB range
         self.device_bandwidth_range = (10.0, 100.0) # Mbps range
         self.intra_zone_latency_range = (5, 15)     # ms range
@@ -64,10 +64,10 @@ class ContinuumFLConfig:
         
         # Dataset Configuration
         self.dataset_name = 'cifar100'   # Options: 'cifar100', 'femnist', 'shakespeare'
-        self.max_samples = 100            # Limit Dataset-Size (use -1 for full dataset)
+        self.max_samples = -1            # Limit Dataset-Size (use -1 for full dataset)
         self.data_distribution = 'dirichlet'  # Data distribution type
-        self.intra_zone_alpha = 10       # Dirichlet α for intra-zone
-        self.inter_zone_alpha = 0.3      # Dirichlet α for inter-zone
+        self.intra_zone_alpha = 100       # Dirichlet α for intra-zone
+        self.inter_zone_alpha = 10      # Dirichlet α for inter-zone
         self.train_test_split = 0.8
         self.shakespeare_num_speakers = 35
         # Model Configuration

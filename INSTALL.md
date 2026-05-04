@@ -85,6 +85,15 @@ python main.py --config_file example_config.json
 run_experiments.bat
 ```
 
+### Option 6: Preset shell launchers
+```bash
+# Local preset launcher
+bash scripts/run_continuumfl.sh standard
+
+# Slurm preset launcher
+sbatch scripts/run_continuumfl_slurm.sh standard
+```
+
 ## 📊 Expected Results
 
 After running an experiment, you should see:
@@ -182,7 +191,7 @@ python main.py --spatial_regularization 0.2 --spatial_weight 0.6
 
 1. **Run the test**: `python test_continuumfl.py`
 2. **Basic experiment**: `python main.py --num_devices 20 --num_rounds 10`
-3. **Full experiment**: Use `run_experiments.bat` or shell script
+3. **Full experiment**: Use `run_experiments.bat`, `run_experiments.sh`, or the preset launchers in `scripts/`
 4. **Customize**: Modify `config.py` or create custom configuration files
 5. **Analyze**: Check visualization outputs in results directory
 
