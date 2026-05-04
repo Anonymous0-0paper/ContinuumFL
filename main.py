@@ -116,48 +116,112 @@ def parse_arguments():
     
     return parser.parse_args()
 
+def check_amd_gpu_availability():
+    """Check if AMD GPU (ROCm) is available"""
+    try:
+        # Check if HIP is available (AMD GPU support)
+        if hasattr(torch.version, 'hip') and torch.version.hip is not None:
+            print(f"✅ AMD GPU (ROCm) Available: Yes")
+            print(f"   HIP version: {torch.version.hip}")
+            
+            # Try to get AMD device info
+            if torch.cuda.is_available():
+                device_count = torch.cuda.device_count()
+                current_device = torch.cuda.current_device()
+                device_name = torch.cuda.get_device_name(current_device)
+                memory_total = torch.cuda.get_device_properties(current_device).total_memory / (1024**3)  # GB
+                memory_free = (torch.cuda.get_device_properties(current_device).total_memory - torch.cuda.memory_allocated(current_device)) / (1024**3)
+                
+                print(f"📟 AMD Device Count: {device_count}")
+                print(f"🎯 Current Device: {current_device} ({device_name})")
+                print(f"💾 GPU Memory: {memory_free:.2f}GB free / {memory_total:.2f}GB total")
+                
+                # Memory recommendations
+                if memory_free < 2.0:
+                    print(f"⚠️  Warning: Low GPU memory ({memory_free:.2f}GB). Consider:")
+                    print(f"   - Using smaller batch sizes (--batch_size 16 or 8)")
+                    print(f"   - Reducing number of devices (--num_devices 50)")
+                    print(f"   - Using CPU instead (--device cpu)")
+                elif memory_free < 4.0:
+                    print(f"💡 Moderate GPU memory. Recommended settings:")
+                    print(f"   - Batch size: 32 or lower")
+                    print(f"   - Max devices: 100-200")
+                else:
+                    print(f"🚀 Excellent GPU memory! You can use larger experiments.")
+                
+                return True
+    except Exception as e:
+        pass
+    
+    return False
+
+def check_cuda_availability():
+    """Check if NVIDIA CUDA GPU is available"""
+    try:
+        cuda_available = torch.cuda.is_available()
+        
+        if cuda_available:
+            # Make sure this is CUDA, not ROCm
+            if not (hasattr(torch.version, 'hip') and torch.version.hip is not None):
+                device_count = torch.cuda.device_count()
+                current_device = torch.cuda.current_device()
+                device_name = torch.cuda.get_device_name(current_device)
+                memory_total = torch.cuda.get_device_properties(current_device).total_memory / (1024**3)  # GB
+                memory_free = (torch.cuda.get_device_properties(current_device).total_memory - torch.cuda.memory_allocated(current_device)) / (1024**3)
+                
+                print(f"✅ NVIDIA CUDA Available: Yes")
+                print(f"📟 Device Count: {device_count}")
+                print(f"🎯 Current Device: {current_device} ({device_name})")
+                print(f"💾 GPU Memory: {memory_free:.2f}GB free / {memory_total:.2f}GB total")
+                
+                # Memory recommendations
+                if memory_free < 2.0:
+                    print(f"⚠️  Warning: Low GPU memory ({memory_free:.2f}GB). Consider:")
+                    print(f"   - Using smaller batch sizes (--batch_size 16 or 8)")
+                    print(f"   - Reducing number of devices (--num_devices 50)")
+                    print(f"   - Using CPU instead (--device cpu)")
+                elif memory_free < 4.0:
+                    print(f"💡 Moderate GPU memory. Recommended settings:")
+                    print(f"   - Batch size: 32 or lower")
+                    print(f"   - Max devices: 100-200")
+                else:
+                    print(f"🚀 Excellent GPU memory! You can use larger experiments.")
+                
+                return True
+    except Exception as e:
+        pass
+    
+    return False
+
 def check_gpu_availability():
-    """Check GPU availability and provide recommendations"""
+    """Check GPU availability (AMD first, then CUDA, then CPU)
+    
+    Returns:
+        tuple: (device_str, is_gpu_available, gpu_type)
+               device_str: 'cuda' or 'cpu'
+               is_gpu_available: True if GPU found
+               gpu_type: 'amd', 'cuda', or 'cpu'
+    """
     print("🔍 Checking GPU availability...")
     
-    # Check if CUDA is available
-    cuda_available = torch.cuda.is_available()
+    # Check AMD GPU (ROCm) first
+    if check_amd_gpu_availability():
+        return 'cuda', True, 'amd'  # AMD ROCm uses 'cuda' backend in PyTorch
     
-    if cuda_available:
-        device_count = torch.cuda.device_count()
-        current_device = torch.cuda.current_device()
-        device_name = torch.cuda.get_device_name(current_device)
-        memory_total = torch.cuda.get_device_properties(current_device).total_memory / (1024**3)  # GB
-        memory_free = (torch.cuda.get_device_properties(current_device).total_memory - torch.cuda.memory_allocated(current_device)) / (1024**3)
-        
-        print(f"✅ CUDA Available: Yes")
-        print(f"📟 Device Count: {device_count}")
-        print(f"🎯 Current Device: {current_device} ({device_name})")
-        print(f"💾 GPU Memory: {memory_free:.2f}GB free / {memory_total:.2f}GB total")
-        
-        # Memory recommendations
-        if memory_free < 2.0:
-            print(f"⚠️  Warning: Low GPU memory ({memory_free:.2f}GB). Consider:")
-            print(f"   - Using smaller batch sizes (--batch_size 16 or 8)")
-            print(f"   - Reducing number of devices (--num_devices 50)")
-            print(f"   - Using CPU instead (--device cpu)")
-        elif memory_free < 4.0:
-            print(f"💡 Moderate GPU memory. Recommended settings:")
-            print(f"   - Batch size: 32 or lower")
-            print(f"   - Max devices: 100-200")
-        else:
-            print(f"🚀 Excellent GPU memory! You can use larger experiments.")
-        
-        return 'cuda', True
-    else:
-        print(f"❌ CUDA Available: No")
-        print(f"💻 Will use CPU for training")
-        print(f"💡 For faster training, consider:")
-        print(f"   - Installing CUDA-enabled PyTorch")
-        print(f"   - Using Google Colab or cloud GPU instances")
-        print(f"   - Running smaller experiments on CPU")
-        
-        return 'cpu', False
+    # Check NVIDIA CUDA
+    if check_cuda_availability():
+        return 'cuda', True, 'cuda'
+    
+    # Fall back to CPU
+    print(f"❌ No GPU Available (AMD or CUDA)")
+    print(f"💻 Will use CPU for training")
+    print(f"💡 For faster training, consider:")
+    print(f"   - Installing ROCm-enabled PyTorch (for AMD GPUs)")
+    print(f"   - Installing CUDA-enabled PyTorch (for NVIDIA GPUs)")
+    print(f"   - Using Google Colab or cloud GPU instances")
+    print(f"   - Running smaller experiments on CPU")
+    
+    return 'cpu', False, 'cpu'
 
 def setup_configuration(args) -> ContinuumFLConfig:
     """Setup configuration from arguments"""
@@ -325,15 +389,18 @@ def main():
     args = parse_arguments()
     
     # Check GPU availability first
-    recommended_device, gpu_available = check_gpu_availability()
+    recommended_device, gpu_available, gpu_type = check_gpu_availability()
     
     # Auto-adjust device setting based on availability and user preference
     if args.device == 'cuda':
         if gpu_available:
-            print(f"🎯 Using GPU as requested")
+            if gpu_type == 'amd':
+                print(f"🎯 Using AMD GPU (ROCm) as requested")
+            elif gpu_type == 'cuda':
+                print(f"🎯 Using NVIDIA CUDA GPU as requested")
             config_device = 'cuda'
         else:
-            print(f"⚠️  CUDA requested but not available, switching to CPU")
+            print(f"⚠️  GPU requested but not available, switching to CPU")
             config_device = 'cpu'
     else:
         print(f"💻 Using CPU as requested")

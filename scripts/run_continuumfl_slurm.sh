@@ -6,7 +6,6 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mail-type=BEGIN,END,FAIL 
 #SBATCH --mail-user=abolfazl.Younesi@uibk.ac.at 
-#SBATCH --uid=abolfazl.younesi 
 #SBATCH --account=DPS
 #SBATCH --mem=24G
 #SBATCH --gres=gpu:1
