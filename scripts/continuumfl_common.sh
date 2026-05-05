@@ -213,7 +213,7 @@ apply_preset_defaults() {
             DEVICE_FAILURE_PROBABILITY=0.05
             ZONE_FAILURE_PROBABILITY=0.02
             SHAKESPEARE_NUM_SPEAKERS=35
-            RUN_BASELINES=false
+            RUN_BASELINES=true
             BASELINES_ONLY=false
             BASELINE_METHODS=(FedAvg FedProx HierFL ClusterFL)
             CREATE_VISUALIZATIONS=true
