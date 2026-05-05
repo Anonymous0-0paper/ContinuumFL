@@ -1,29 +1,30 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=CFL-quick
+#SBATCH --job-name=CFL-quick-femnist
 #SBATCH --partition=IFIgpu2070
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=2
-#SBATCH --mail-type=BEGIN,END,FAIL 
-#SBATCH --mail-user=abolfazl.Younesi@uibk.ac.at 
+#SBATCH --cpus-per-task=4
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=abolfazl.Younesi@uibk.ac.at
 #SBATCH --account=DPS
-#SBATCH --mem=8G
+#SBATCH --mem=16G
 #SBATCH --gres=gpu:1
 #SBATCH --time=00:30:00
 #SBATCH --output=logs/slurm.%x.%j.out
 #SBATCH --error=logs/slurm.%x.%j.err
 
-# Slurm launcher for ContinuumFL - QUICK preset
-# Optimized for fast testing with minimal resources
+# Slurm launcher for ContinuumFL - QUICK FEMNIST preset
+# Optimized for fast testing with FEMNIST dataset
 #
 # This script runs the quick preset which includes:
-# - 20 devices, 5 zones
+# - 10 devices, 2 zones
 # - 10 training rounds
-# - 2 local epochs
-# - Batch size 16
+# - 5 local epochs
+# - Batch size 64
+# - 5000 FEMNIST samples
 # - No visualizations or baselines
 #
-# Expected runtime: 5-10 minutes
+# Expected runtime: 10-20 minutes
 
 set -euo pipefail
 
@@ -36,16 +37,16 @@ PRESET="${1:-$DEFAULT_PRESET}"
 shift || true
 
 # User-editable defaults for the quick Slurm job
-DATASET="cifar100"
-MAX_SAMPLES=500
-NUM_DEVICES=20
-NUM_ZONES=5
+DATASET="femnist"
+MAX_SAMPLES=5000
+NUM_DEVICES=10
+NUM_ZONES=2
 MIN_ZONE_SIZE=2
-MAX_ZONE_SIZE=6
+MAX_ZONE_SIZE=8
 NUM_ROUNDS=10
-LOCAL_EPOCHS=2
+LOCAL_EPOCHS=5
 LEARNING_RATE=0.01
-BATCH_SIZE=16
+BATCH_SIZE=64
 SPATIAL_WEIGHT=0.4
 DATA_WEIGHT=0.4
 NETWORK_WEIGHT=0.2
@@ -53,8 +54,8 @@ SPATIAL_REGULARIZATION=0.1
 CORRELATION_THRESHOLD=0.05
 COMPRESSION_RATE=0.1
 ENABLE_COMPRESSION=false
-INTRA_ZONE_ALPHA=10
-INTER_ZONE_ALPHA=0.3
+INTRA_ZONE_ALPHA=100
+INTER_ZONE_ALPHA=10
 ASYNC_AGGREGATION=false
 ENABLE_FAILURE=false
 DEVICE_FAILURE_PROBABILITY=0.05

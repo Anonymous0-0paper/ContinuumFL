@@ -29,15 +29,15 @@ apply_preset_defaults() {
 
     case "$preset" in
         quick)
-            DATASET="cifar100"
-            MAX_SAMPLES=500
-            NUM_DEVICES=20
-            NUM_ZONES=5
+            DATASET="femnist"
+            MAX_SAMPLES=5000
+            NUM_DEVICES=10
+            NUM_ZONES=2
             MIN_ZONE_SIZE=2
-            MAX_ZONE_SIZE=6
+            MAX_ZONE_SIZE=8
             NUM_ROUNDS=10
-            LOCAL_EPOCHS=2
-            BATCH_SIZE=16
+            LOCAL_EPOCHS=5
+            BATCH_SIZE=64
             LEARNING_RATE=0.01
             SPATIAL_WEIGHT=0.4
             DATA_WEIGHT=0.4
@@ -46,8 +46,8 @@ apply_preset_defaults() {
             CORRELATION_THRESHOLD=0.05
             COMPRESSION_RATE=0.1
             ENABLE_COMPRESSION=false
-            INTRA_ZONE_ALPHA=10
-            INTER_ZONE_ALPHA=0.3
+            INTRA_ZONE_ALPHA=100
+            INTER_ZONE_ALPHA=10
             ASYNC_AGGREGATION=false
             ENABLE_FAILURE=false
             DEVICE_FAILURE_PROBABILITY=0.05
@@ -61,15 +61,15 @@ apply_preset_defaults() {
             DEVICE="cuda"
             ;;
         standard)
-            DATASET="cifar100"
+            DATASET="femnist"
             MAX_SAMPLES=-1
             NUM_DEVICES=100
             NUM_ZONES=20
             MIN_ZONE_SIZE=4
             MAX_ZONE_SIZE=15
-            NUM_ROUNDS=200
+            NUM_ROUNDS=100
             LOCAL_EPOCHS=5
-            BATCH_SIZE=32
+            BATCH_SIZE=64
             LEARNING_RATE=0.01
             SPATIAL_WEIGHT=0.4
             DATA_WEIGHT=0.4
@@ -78,8 +78,8 @@ apply_preset_defaults() {
             CORRELATION_THRESHOLD=0.05
             COMPRESSION_RATE=0.1
             ENABLE_COMPRESSION=false
-            INTRA_ZONE_ALPHA=10
-            INTER_ZONE_ALPHA=0.3
+            INTRA_ZONE_ALPHA=100
+            INTER_ZONE_ALPHA=10
             ASYNC_AGGREGATION=false
             ENABLE_FAILURE=false
             DEVICE_FAILURE_PROBABILITY=0.05
@@ -93,13 +93,13 @@ apply_preset_defaults() {
             DEVICE="cuda"
             ;;
         large)
-            DATASET="cifar100"
+            DATASET="femnist"
             MAX_SAMPLES=-1
             NUM_DEVICES=500
             NUM_ZONES=50
             MIN_ZONE_SIZE=4
             MAX_ZONE_SIZE=15
-            NUM_ROUNDS=300
+            NUM_ROUNDS=150
             LOCAL_EPOCHS=3
             BATCH_SIZE=64
             LEARNING_RATE=0.01
@@ -110,8 +110,8 @@ apply_preset_defaults() {
             CORRELATION_THRESHOLD=0.05
             COMPRESSION_RATE=0.1
             ENABLE_COMPRESSION=false
-            INTRA_ZONE_ALPHA=10
-            INTER_ZONE_ALPHA=0.3
+            INTRA_ZONE_ALPHA=100
+            INTER_ZONE_ALPHA=10
             ASYNC_AGGREGATION=false
             ENABLE_FAILURE=false
             DEVICE_FAILURE_PROBABILITY=0.05
@@ -125,15 +125,15 @@ apply_preset_defaults() {
             DEVICE="cuda"
             ;;
         baseline)
-            DATASET="cifar100"
+            DATASET="femnist"
             MAX_SAMPLES=-1
             NUM_DEVICES=100
             NUM_ZONES=20
             MIN_ZONE_SIZE=4
             MAX_ZONE_SIZE=15
-            NUM_ROUNDS=200
+            NUM_ROUNDS=100
             LOCAL_EPOCHS=5
-            BATCH_SIZE=32
+            BATCH_SIZE=64
             LEARNING_RATE=0.01
             SPATIAL_WEIGHT=0.4
             DATA_WEIGHT=0.4
@@ -142,8 +142,8 @@ apply_preset_defaults() {
             CORRELATION_THRESHOLD=0.05
             COMPRESSION_RATE=0.1
             ENABLE_COMPRESSION=false
-            INTRA_ZONE_ALPHA=10
-            INTER_ZONE_ALPHA=0.3
+            INTRA_ZONE_ALPHA=100
+            INTER_ZONE_ALPHA=10
             ASYNC_AGGREGATION=false
             ENABLE_FAILURE=false
             DEVICE_FAILURE_PROBABILITY=0.05
@@ -157,15 +157,15 @@ apply_preset_defaults() {
             DEVICE="cuda"
             ;;
         comm)
-            DATASET="cifar100"
+            DATASET="femnist"
             MAX_SAMPLES=-1
             NUM_DEVICES=100
             NUM_ZONES=20
             MIN_ZONE_SIZE=4
             MAX_ZONE_SIZE=15
-            NUM_ROUNDS=150
+            NUM_ROUNDS=100
             LOCAL_EPOCHS=5
-            BATCH_SIZE=32
+            BATCH_SIZE=64
             LEARNING_RATE=0.01
             SPATIAL_WEIGHT=0.4
             DATA_WEIGHT=0.4
@@ -174,8 +174,8 @@ apply_preset_defaults() {
             CORRELATION_THRESHOLD=0.05
             COMPRESSION_RATE=0.05
             ENABLE_COMPRESSION=true
-            INTRA_ZONE_ALPHA=10
-            INTER_ZONE_ALPHA=0.3
+            INTRA_ZONE_ALPHA=100
+            INTER_ZONE_ALPHA=10
             ASYNC_AGGREGATION=false
             ENABLE_FAILURE=false
             DEVICE_FAILURE_PROBABILITY=0.05
@@ -191,13 +191,13 @@ apply_preset_defaults() {
         femnist)
             DATASET="femnist"
             MAX_SAMPLES=-1
-            NUM_DEVICES=80
-            NUM_ZONES=16
+            NUM_DEVICES=100
+            NUM_ZONES=20
             MIN_ZONE_SIZE=4
             MAX_ZONE_SIZE=15
             NUM_ROUNDS=100
             LOCAL_EPOCHS=5
-            BATCH_SIZE=32
+            BATCH_SIZE=64
             LEARNING_RATE=0.01
             SPATIAL_WEIGHT=0.4
             DATA_WEIGHT=0.4
@@ -206,8 +206,8 @@ apply_preset_defaults() {
             CORRELATION_THRESHOLD=0.05
             COMPRESSION_RATE=0.1
             ENABLE_COMPRESSION=false
-            INTRA_ZONE_ALPHA=10
-            INTER_ZONE_ALPHA=0.3
+            INTRA_ZONE_ALPHA=100
+            INTER_ZONE_ALPHA=10
             ASYNC_AGGREGATION=false
             ENABLE_FAILURE=false
             DEVICE_FAILURE_PROBABILITY=0.05

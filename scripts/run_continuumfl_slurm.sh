@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=CFL
+#SBATCH --job-name=CFL-femnist
 #SBATCH --partition=IFItitan
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=4
-#SBATCH --mail-type=BEGIN,END,FAIL 
-#SBATCH --mail-user=abolfazl.Younesi@uibk.ac.at 
+#SBATCH --cpus-per-task=8
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=abolfazl.Younesi@uibk.ac.at
 #SBATCH --account=DPS
-#SBATCH --mem=24G
+#SBATCH --mem=48G
 #SBATCH --gres=gpu:1
 #SBATCH --time=02-00:00:00
 #SBATCH --output=logs/slurm.%x.%j.out
@@ -32,7 +32,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 source "$PROJECT_ROOT/scripts/continuumfl_common.sh"
 
-DEFAULT_PRESET="standard"
+DEFAULT_PRESET="femnist"
 PRESET="${1:-$DEFAULT_PRESET}"
 shift || true
 
@@ -43,10 +43,10 @@ NUM_DEVICES=100
 NUM_ZONES=20
 MIN_ZONE_SIZE=4
 MAX_ZONE_SIZE=15
-NUM_ROUNDS=200
+NUM_ROUNDS=100
 LOCAL_EPOCHS=5
 LEARNING_RATE=0.01
-BATCH_SIZE=32
+BATCH_SIZE=64
 SPATIAL_WEIGHT=0.4
 DATA_WEIGHT=0.4
 NETWORK_WEIGHT=0.2
