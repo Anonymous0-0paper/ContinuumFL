@@ -27,7 +27,7 @@ DATASET="${DATASET:-ucihar}"
 # ┌─────────────────────────────────────────────────────────────────────────────
 # │ BASELINE METHODS
 # └─────────────────────────────────────────────────────────────────────────────
-BASELINE_METHODS=(APCfl GeoFL SnapCFL)
+BASELINE_METHODS=(FedAvg FedProx HierFL ClusterFL IFCA APCfl GeoFL SnapCFL)
 
 # ┌─────────────────────────────────────────────────────────────────────────────
 # │ FIXED PARAMETERS (shared across all runs)
