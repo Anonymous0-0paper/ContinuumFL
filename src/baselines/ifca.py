@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import torch
 import torch.nn as nn
+from .metrics_utils import compute_prf as _compute_prf, find_convergence as _find_convergence
 
 
 class IFCA:
@@ -71,38 +72,46 @@ class IFCA:
         """Full training loop."""
         accuracies: List[float] = []
         losses:     List[float] = []
-        cluster_counts: List[List[int]] = []   # clients per cluster per round
+        precisions: List[float] = []
+        recalls:    List[float] = []
+        f1s:        List[float] = []
+        round_times: List[float] = []
+        cluster_counts: List[List[int]] = []
         t_start = time.time()
 
         try:
             for t in range(1, self.num_rounds + 1):
                 t_round = time.time()
                 acc, loss, counts = self.train_round(t)
-                accuracies.append(acc)
-                losses.append(loss)
+                _, _, prec, rec, f1 = self.evaluate()
+                accuracies.append(acc); losses.append(loss)
+                precisions.append(prec); recalls.append(rec); f1s.append(f1)
+                round_times.append(time.time() - t_round)
                 cluster_counts.append(counts)
-
-                # LR decay
                 self._current_lr *= self.lr_decay
-
                 print(
                     f"IFCA Round {t}/{self.num_rounds}: "
-                    f"Acc={acc:.4f}  Loss={loss:.4f}  "
-                    f"Clusters={counts}  Time={time.time()-t_round:.2f}s"
+                    f"Acc={acc:.4f}  Loss={loss:.4f}  F1={f1:.4f}  "
+                    f"Clusters={counts}  Time={round_times[-1]:.2f}s"
                 )
         except KeyboardInterrupt:
             print("IFCA training interrupted.")
 
-        # Evaluate final model (cluster 0 as representative)
-        final_acc, final_loss = self.evaluate()
+        final_acc, final_loss, final_prec, final_rec, final_f1 = self.evaluate()
 
         return {
-            "method":        "IFCA",
+            "method":         "IFCA",
             "final_accuracy": final_acc,
             "final_loss":     final_loss,
             "accuracies":     accuracies,
             "losses":         losses,
+            "precisions":     precisions,
+            "recalls":        recalls,
+            "f1s":            f1s,
+            "round_times":    round_times,
+            "cluster_counts": cluster_counts,
             "total_time":     time.time() - t_start,
+            "convergence_round": _find_convergence(accuracies),
         }
 
     def train_round(self, t: int) -> Tuple[float, float, List[int]]:
@@ -112,12 +121,11 @@ class IFCA:
         """
         sampled_ids = self._sample_clients()
         if not sampled_ids:
-            acc, loss = self.evaluate()
+            acc, loss, _p, _r, _f = self.evaluate()
             return acc, loss, [0] * self.k
 
-        # Per-client results: (cluster_assignment, updated_state_dict_or_gradient)
-        assignments: Dict[str, int]  = {}
-        updates:     Dict[str, Any]  = {}
+        assignments: Dict[str, int] = {}
+        updates:     Dict[str, Any] = {}
 
         for cid in sampled_ids:
             device = self.devices[cid]
@@ -133,7 +141,7 @@ class IFCA:
 
         self.aggregate(assignments, updates)
 
-        acc, loss = self.evaluate()
+        acc, loss, _p, _r, _f = self.evaluate()
         counts = [
             sum(1 for cid in assignments if assignments[cid] == j)
             for j in range(self.k)
@@ -321,9 +329,10 @@ class IFCA:
                 new_sd[name] = new_sd[name].float() - (self._current_lr / m_total) * agg_g
             self.cluster_models[j] = new_sd
 
-    def evaluate(self) -> Tuple[float, float]:
-        """Evaluate by averaging accuracy across all k cluster models."""
-        total_acc, total_loss = 0.0, 0.0
+    def evaluate(self) -> Tuple[float, float, float, float, float]:
+        """Evaluate by averaging metrics across all k cluster models.
+        Returns (accuracy, loss, precision, recall, f1)."""
+        total_acc = total_loss = total_prec = total_rec = total_f1 = 0.0
         criterion = nn.CrossEntropyLoss()
 
         for sd in self.cluster_models:
@@ -331,6 +340,9 @@ class IFCA:
             model.load_state_dict(sd)
             model = model.to(self._dev)
             model.eval()
+            all_preds: List[torch.Tensor] = []
+            all_targets_l: List[torch.Tensor] = []
+            num_classes = 2
 
             try:
                 loader = self.dataset.get_global_dataloader(batch_size=64, is_train=False)
@@ -341,16 +353,25 @@ class IFCA:
                         out = model(data)
                         if isinstance(out, tuple):
                             out = out[0]
+                        num_classes = out.shape[1]
                         loss_sum += criterion(out, target).item()
-                        correct  += out.argmax(1).eq(target).sum().item()
-                        total    += target.size(0)
+                        pred = out.argmax(1)
+                        correct += pred.eq(target).sum().item()
+                        total   += target.size(0)
+                        all_preds.append(pred.cpu())
+                        all_targets_l.append(target.cpu())
                 total_acc  += correct / max(total, 1)
                 total_loss += loss_sum / max(len(loader), 1)
+                preds_t   = torch.cat(all_preds)
+                targets_t = torch.cat(all_targets_l)
+                p, r, f = _compute_prf(preds_t, targets_t, num_classes)
+                total_prec += p; total_rec += r; total_f1 += f
             except Exception as e:
                 print(f"  IFCA evaluate error: {e}")
 
-        n = len(self.cluster_models)
-        return total_acc / max(n, 1), total_loss / max(n, 1)
+        n = max(len(self.cluster_models), 1)
+        return (total_acc / n, total_loss / n,
+                total_prec / n, total_rec / n, total_f1 / n)
 
     # ------------------------------------------------------------------
     # Internal helpers

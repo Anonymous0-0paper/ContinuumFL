@@ -18,6 +18,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from .metrics_utils import compute_prf as _compute_prf, find_convergence as _find_convergence
 
 
 # ---------------------------------------------------------------------------
@@ -173,34 +174,47 @@ class GeoFL:
 
     def run(self) -> Dict[str, Any]:
         """Full training loop."""
-        accuracies, losses = [], []
-        upload_counts = []
+        accuracies: List[float] = []
+        losses: List[float] = []
+        precisions: List[float] = []
+        recalls: List[float] = []
+        f1s: List[float] = []
+        round_times: List[float] = []
+        upload_counts: List[int] = []
         t_start = time.time()
 
         try:
             for t in range(1, self.num_rounds + 1):
                 t_round = time.time()
                 acc, loss, uploads = self.train_round(t)
-                accuracies.append(acc)
-                losses.append(loss)
+                # fetch full metrics after train_round
+                _, _, prec, rec, f1 = self.evaluate()
+                accuracies.append(acc); losses.append(loss)
+                precisions.append(prec); recalls.append(rec); f1s.append(f1)
+                round_times.append(time.time() - t_round)
                 upload_counts.append(uploads)
                 print(
                     f"GeoFL Round {t}/{self.num_rounds}: "
-                    f"Acc={acc:.4f}  Loss={loss:.4f}  "
+                    f"Acc={acc:.4f}  Loss={loss:.4f}  F1={f1:.4f}  "
                     f"Uploads={uploads}/{len(self.aggregator_ids)}  "
-                    f"Time={time.time()-t_round:.2f}s"
+                    f"Time={round_times[-1]:.2f}s"
                 )
         except KeyboardInterrupt:
             print("GeoFL training interrupted.")
 
         return {
-            "method": "GeoFL",
+            "method":         "GeoFL",
             "final_accuracy": accuracies[-1] if accuracies else 0.0,
-            "final_loss": losses[-1] if losses else float("inf"),
-            "accuracies": accuracies,
-            "losses": losses,
-            "upload_counts": upload_counts,
-            "total_time": time.time() - t_start,
+            "final_loss":     losses[-1]     if losses     else float("inf"),
+            "accuracies":     accuracies,
+            "losses":         losses,
+            "precisions":     precisions,
+            "recalls":        recalls,
+            "f1s":            f1s,
+            "round_times":    round_times,
+            "upload_counts":  upload_counts,
+            "total_time":     time.time() - t_start,
+            "convergence_round": _find_convergence(accuracies),
         }
 
     def train_round(self, t: int) -> Tuple[float, float, int]:
@@ -243,7 +257,7 @@ class GeoFL:
                 self.agg_model[agg_id] = w_agg
                 self.agg_r[agg_id] += 1
 
-        acc, loss = self.evaluate()
+        acc, loss, _prec, _rec, _f1 = self.evaluate()
         return acc, loss, uploads_this_round
 
     def local_update(self, client_id: str, w_init: Dict[str, torch.Tensor]) -> Optional[Dict]:
@@ -366,17 +380,18 @@ class GeoFL:
         self.global_sd = copy.deepcopy(result)
         return result
 
-    def evaluate(self) -> Tuple[float, float]:
-        """Evaluate using the current global model on the test set."""
-        # Use the aggregated global_sd (or first aggregator model as fallback)
+    def evaluate(self) -> Tuple[float, float, float, float, float]:
+        """Evaluate using the current global model. Returns (accuracy, loss, precision, recall, f1)."""
         sd = self.global_sd
-
         model = copy.deepcopy(self._template_model)
         model.load_state_dict(sd)
         model = model.to(self._dev)
         model.eval()
 
         criterion = nn.CrossEntropyLoss()
+        all_preds: List[torch.Tensor] = []
+        all_targets: List[torch.Tensor] = []
+        num_classes = 2
         try:
             loader = self.dataset.get_global_dataloader(batch_size=64, is_train=False)
             total_loss, correct, total = 0.0, 0, 0
@@ -386,17 +401,24 @@ class GeoFL:
                     out = model(data)
                     if isinstance(out, tuple):
                         out = out[0]
+                    num_classes = out.shape[1]
                     total_loss += criterion(out, target).item()
-                    correct += out.argmax(1).eq(target).sum().item()
+                    pred = out.argmax(1)
+                    correct += pred.eq(target).sum().item()
                     total += target.size(0)
+                    all_preds.append(pred.cpu())
+                    all_targets.append(target.cpu())
             acc = correct / max(total, 1)
             avg_loss = total_loss / max(len(loader), 1)
+            preds_t = torch.cat(all_preds)
+            targets_t = torch.cat(all_targets)
+            precision, recall, f1 = _compute_prf(preds_t, targets_t, num_classes)
         except Exception as e:
             print(f"  GeoFL evaluate error: {e}")
-            acc, avg_loss = 0.0, float("inf")
+            acc, avg_loss, precision, recall, f1 = 0.0, float("inf"), 0.0, 0.0, 0.0
 
         model.train()
-        return acc, avg_loss
+        return acc, avg_loss, precision, recall, f1
 
     # ------------------------------------------------------------------
     # Internal helpers

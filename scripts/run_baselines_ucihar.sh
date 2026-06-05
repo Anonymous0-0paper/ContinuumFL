@@ -1,25 +1,28 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
 #  ContinuumFL — Baselines-only on UCI-HAR
+#  Adapted for: VSC-5 (vsc5.vsc.ac.at) | Project p73209 | User abolfazlyoun
 #
-#  Submit:   sbatch scripts/run_baselines_ucihar.sh
-#  Dry-run:  DRY_RUN=true bash scripts/run_baselines_ucihar.sh
+#  Submit:   sbatch scripts/run_baselines_ucihar_vsc5.sh
+#  Dry-run:  DRY_RUN=true bash scripts/run_baselines_ucihar_vsc5.sh
 #
 #  To change dataset: set DATASET below to one of:
 #    ucihar | femnist | cifar100 | shakespeare | speechcommands
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# ── SLURM directives ───────────────────────────────────────────────────────────
 #SBATCH --job-name=CFL_baselines_ucihar
-#SBATCH --partition=IFItitan          # IFIall | IFIgpu2070 | IFIgpu2070S | IFItitan | IFIgpuL40S
+#SBATCH --account=p73209                      # VSC-5 project account
+#SBATCH --partition=zen3_0512_a100x2          # NVIDIA A100 partition on VSC-5
+#SBATCH --qos=zen3_0512_a100x2               # Must match partition on VSC-5
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=48G
-#SBATCH --gres=gpu:1
-#SBATCH --time=06:00:00
+#SBATCH --gres=gpu:1                          # Single A100 (40 GB VRAM)
+#SBATCH --time=23:00:00                       # Max 3 days on VSC-5
 #SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=abolfazl.Younesi@uibk.ac.at
-#SBATCH --account=DPS
+#SBATCH --mail-user=Abolfazl.Younesi@uibk.ac.at
 #SBATCH --output=logs/slurm.%x.%j.out
 #SBATCH --error=logs/slurm.%x.%j.err
 
@@ -57,10 +60,10 @@ DEVICE="cuda"
 # ── Baseline methods to run ────────────────────────────────────────────────────
 # Remove or add methods as needed:
 #   FedAvg | FedProx | HierFL | ClusterFL | IFCA | APCfl | GeoFL | SnapCFL
-BASELINE_METHODS=(FedAvg FedProx HierFL ClusterFL)
+BASELINE_METHODS=(FedAvg FedProx HierFL ClusterFL IFCA APCfl GeoFL SnapCFL)
 
 # ┌─────────────────────────────────────────────────────────────────────────────
-# │ PATHS
+# │ PATHS  (VSC-5: run from $DATA, not $HOME)
 # └─────────────────────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
@@ -71,14 +74,27 @@ CHECKPOINT_DIR="$PROJECT_ROOT/checkpoints/$RUN_NAME"
 mkdir -p "$LOG_DIR" "$RESULTS_DIR" "$CHECKPOINT_DIR"
 
 # ┌─────────────────────────────────────────────────────────────────────────────
-# │ ENVIRONMENT SETUP
+# │ VSC-5 ENVIRONMENT SETUP
+# │ VSC-5 uses AlmaLinux + module system — load CUDA before anything else
 # └─────────────────────────────────────────────────────────────────────────────
-PYTHON_BIN="${PYTHON_BIN:-python}"
+
+# Clean the module environment
+module purge
+
+# Load CUDA 12.3 (available on VSC-5 A100 nodes)
+module load cuda/12.3
+
+# Print GPU info for the log
+echo "====== Node: $(hostname) ======"
+echo "====== CUDA module loaded ======"
+nvidia-smi
+echo "==============================="
+
+# ── Python / venv setup ───────────────────────────────────────────────────────
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 if ! command -v "$PYTHON_BIN" &>/dev/null; then
-    command -v python3 &>/dev/null && PYTHON_BIN="python3" || {
-        echo "❌ Neither 'python' nor 'python3' found."
-        exit 1
-    }
+    echo "❌ python3 not found — load a python module or set PYTHON_BIN."
+    exit 1
 fi
 
 VENV_DIR="$PROJECT_ROOT/.venv"
@@ -90,18 +106,31 @@ source "$VENV_DIR/bin/activate"
 PYTHON_BIN="$VENV_DIR/bin/python"
 "$PYTHON_BIN" -m pip install --upgrade pip 2>&1 | tail -3
 
-if command -v nvidia-smi &>/dev/null; then
-    "$PYTHON_BIN" -m pip install torch torchvision torchaudio \
-        --index-url https://download.pytorch.org/whl/cu118 2>&1 | tail -3
-elif command -v rocm-smi &>/dev/null; then
-    "$PYTHON_BIN" -m pip install torch torchvision torchaudio \
-        --index-url https://download.pytorch.org/whl/rocm5.7 2>&1 | tail -3
-else
-    "$PYTHON_BIN" -m pip install torch torchvision torchaudio 2>&1 | tail -3
+# ── Install PyTorch for CUDA 12.3 (A100 on VSC-5) ────────────────────────────
+# VSC-5 A100 nodes have CUDA 12.3 — use cu121 wheel (closest stable match)
+"$PYTHON_BIN" -m pip install \
+    torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/cu121 2>&1 | tail -5
+
+# ── Install remaining requirements (skip torch lines to avoid conflicts) ───────
+if [ -f "$PROJECT_ROOT/requirements.txt" ]; then
+    grep -v "^torch\|^#.*torch\|cuda\|rocm" "$PROJECT_ROOT/requirements.txt" \
+        | "$PYTHON_BIN" -m pip install -r /dev/stdin 2>&1 || true
 fi
 
-grep -v "^torch\|^#.*torch\|cuda\|rocm" "$PROJECT_ROOT/requirements.txt" \
-    | "$PYTHON_BIN" -m pip install --quiet -r /dev/stdin 2>&1 || true
+# ┌─────────────────────────────────────────────────────────────────────────────
+# │ SANITY CHECK — confirm GPU is visible to PyTorch
+# └─────────────────────────────────────────────────────────────────────────────
+"$PYTHON_BIN" - <<'EOF'
+import torch, sys
+if not torch.cuda.is_available():
+    print("❌ CUDA not available to PyTorch — check module and driver.")
+    sys.exit(1)
+n = torch.cuda.device_count()
+for i in range(n):
+    print(f"✅ GPU {i}: {torch.cuda.get_device_name(i)} | "
+          f"VRAM: {torch.cuda.get_device_properties(i).total_memory / 1e9:.1f} GB")
+EOF
 
 # ┌─────────────────────────────────────────────────────────────────────────────
 # │ RUN
@@ -112,6 +141,8 @@ echo "  Dataset  : $DATASET"
 echo "  Methods  : ${BASELINE_METHODS[*]}"
 echo "  Run name : $RUN_NAME"
 echo "  Results  : $RESULTS_DIR"
+echo "  Job ID   : ${SLURM_JOB_ID:-local}"
+echo "  Node     : $(hostname)"
 echo "════════════════════════════════════════════════════════"
 
 CMD=(
@@ -139,7 +170,7 @@ CMD=(
     --log_dir          "$LOG_DIR"
     --results_dir      "$RESULTS_DIR"
     --checkpoint_dir   "$CHECKPOINT_DIR"
-    --baselines_only                          # skip ContinuumFL, run baselines only
+    --baselines_only
     --run_baselines
     --baseline_methods "${BASELINE_METHODS[@]}"
     --save_results
@@ -152,6 +183,7 @@ if [[ "${DRY_RUN:-false}" == "true" ]]; then
     exit 0
 fi
 
+# Use srun inside SLURM, direct call otherwise
 if [[ -n "${SLURM_JOB_ID:-}" ]]; then
     srun "${CMD[@]}" 2>&1 | tee "$RESULTS_DIR/run.log"
 else

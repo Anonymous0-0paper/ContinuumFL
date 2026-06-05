@@ -17,6 +17,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from sklearn.cluster import AffinityPropagation
+from .metrics_utils import compute_prf as _compute_prf, find_convergence as _find_convergence
 
 
 # ---------------------------------------------------------------------------
@@ -104,35 +105,46 @@ class APCFL:
 
     def run(self) -> Dict[str, Any]:
         """Full training loop."""
-        accuracies, losses = [], []
-        cluster_counts = []
+        accuracies: List[float] = []
+        losses: List[float] = []
+        precisions: List[float] = []
+        recalls: List[float] = []
+        f1s: List[float] = []
+        round_times: List[float] = []
+        cluster_counts: List[int] = []
         t_start = time.time()
 
         try:
             for t in range(1, self.num_rounds + 1):
                 t_round = time.time()
-
                 acc, loss, K = self.train_round(t)
-                accuracies.append(acc)
-                losses.append(loss)
+                # train_round already called evaluate() — fetch full metrics
+                _, _, prec, rec, f1 = self.evaluate()
+                accuracies.append(acc); losses.append(loss)
+                precisions.append(prec); recalls.append(rec); f1s.append(f1)
+                round_times.append(time.time() - t_round)
                 cluster_counts.append(K)
-
                 print(
                     f"AP-CFL Round {t}/{self.num_rounds}: "
-                    f"Acc={acc:.4f}  Loss={loss:.4f}  Clusters={K}  "
-                    f"Time={time.time()-t_round:.2f}s"
+                    f"Acc={acc:.4f}  Loss={loss:.4f}  F1={f1:.4f}  Clusters={K}  "
+                    f"Time={round_times[-1]:.2f}s"
                 )
         except KeyboardInterrupt:
             print("AP-CFL training interrupted.")
 
         return {
-            "method": "APCFL",
+            "method":         "APCFL",
             "final_accuracy": accuracies[-1] if accuracies else 0.0,
-            "final_loss": losses[-1] if losses else float("inf"),
-            "accuracies": accuracies,
-            "losses": losses,
+            "final_loss":     losses[-1]     if losses     else float("inf"),
+            "accuracies":     accuracies,
+            "losses":         losses,
+            "precisions":     precisions,
+            "recalls":        recalls,
+            "f1s":            f1s,
+            "round_times":    round_times,
             "cluster_counts": cluster_counts,
-            "total_time": time.time() - t_start,
+            "total_time":     time.time() - t_start,
+            "convergence_round": self._find_convergence(accuracies),
         }
 
     def train_round(self, t: int) -> Tuple[float, float, int]:
@@ -140,7 +152,8 @@ class APCFL:
         # 1. Sample clients for this round
         sampled_ids = self._sample_clients()
         if not sampled_ids:
-            return self.evaluate()[:2] + (len(self.cluster_classifiers),)
+            acc, loss, prec, rec, f1 = self.evaluate()
+            return acc, loss, len(self.cluster_classifiers)
 
         # 2. Update accumulating set S^t and last-seen round
         for cid in sampled_ids:
@@ -165,7 +178,7 @@ class APCFL:
         self.aggregate(t)
 
         # 5. Evaluate
-        acc, loss = self.evaluate()
+        acc, loss, _p, _r, _f = self.evaluate()
         return acc, loss, len(self.cluster_classifiers)
 
     def local_update(self, client_id: str, t: int) -> Optional[Dict]:
@@ -334,10 +347,10 @@ class APCFL:
         if new_classifiers:
             self.cluster_classifiers = new_classifiers
 
-    def evaluate(self) -> Tuple[float, float]:
-        """Evaluate the global model (encoder + first classifier) on the test set."""
+    def evaluate(self) -> Tuple[float, float, float, float, float]:
+        """Evaluate the global model. Returns (accuracy, loss, precision, recall, f1)."""
         if not self.cluster_classifiers:
-            return 0.0, float("inf")
+            return 0.0, float("inf"), 0.0, 0.0, 0.0
 
         model = copy.deepcopy(self._template_model)
         full_sd = merge_state_dict(self.global_encoder_sd, self.cluster_classifiers[0])
@@ -346,6 +359,9 @@ class APCFL:
         model.eval()
 
         criterion = nn.CrossEntropyLoss()
+        all_preds: List[torch.Tensor] = []
+        all_targets: List[torch.Tensor] = []
+        num_classes = 2
         try:
             loader = self.dataset.get_global_dataloader(batch_size=64, is_train=False)
             total_loss, correct, total = 0.0, 0, 0
@@ -355,17 +371,24 @@ class APCFL:
                     out = model(data)
                     if isinstance(out, tuple):
                         out = out[0]
+                    num_classes = out.shape[1]
                     total_loss += criterion(out, target).item()
-                    correct += out.argmax(1).eq(target).sum().item()
+                    pred = out.argmax(1)
+                    correct += pred.eq(target).sum().item()
                     total += target.size(0)
+                    all_preds.append(pred.cpu())
+                    all_targets.append(target.cpu())
             acc = correct / max(total, 1)
             avg_loss = total_loss / max(len(loader), 1)
+            preds_t = torch.cat(all_preds)
+            targets_t = torch.cat(all_targets)
+            precision, recall, f1 = _compute_prf(preds_t, targets_t, num_classes)
         except Exception as e:
             print(f"  AP-CFL evaluate error: {e}")
-            acc, avg_loss = 0.0, float("inf")
+            acc, avg_loss, precision, recall, f1 = 0.0, float("inf"), 0.0, 0.0, 0.0
 
         model.train()
-        return acc, avg_loss
+        return acc, avg_loss, precision, recall, f1
 
     # ------------------------------------------------------------------
     # Internal helpers

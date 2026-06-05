@@ -24,6 +24,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from sklearn.cluster import DBSCAN
+from .metrics_utils import compute_prf as _compute_prf, find_convergence as _find_convergence
 
 
 # ---------------------------------------------------------------------------
@@ -326,33 +327,43 @@ class SnapCFL:
 
         accuracies: List[float] = []
         losses:     List[float] = []
+        precisions: List[float] = []
+        recalls:    List[float] = []
+        f1s:        List[float] = []
+        round_times: List[float] = []
         t_start = time.time()
 
         try:
             for t in range(1, self.num_rounds + 1):
                 t_round = time.time()
-                acc, loss = self.train_round(t)
-                accuracies.append(acc)
-                losses.append(loss)
+                acc, loss, prec, rec, f1 = self.train_round(t)
+                accuracies.append(acc); losses.append(loss)
+                precisions.append(prec); recalls.append(rec); f1s.append(f1)
+                round_times.append(time.time() - t_round)
                 print(
                     f"SnapCFL Round {t}/{self.num_rounds}: "
-                    f"Acc={acc:.4f}  Loss={loss:.4f}  "
-                    f"Time={time.time()-t_round:.2f}s"
+                    f"Acc={acc:.4f}  Loss={loss:.4f}  F1={f1:.4f}  "
+                    f"Time={round_times[-1]:.2f}s"
                 )
         except KeyboardInterrupt:
             print("SnapCFL training interrupted.")
 
-        final_acc, final_loss = self.evaluate()
+        final_acc, final_loss, final_prec, final_rec, final_f1 = self.evaluate()
         return {
             "method":         "SnapCFL",
             "final_accuracy": final_acc,
             "final_loss":     final_loss,
             "accuracies":     accuracies,
             "losses":         losses,
+            "precisions":     precisions,
+            "recalls":        recalls,
+            "f1s":            f1s,
+            "round_times":    round_times,
             "total_time":     time.time() - t_start,
+            "convergence_round": _find_convergence(accuracies),
         }
 
-    def train_round(self, t: int) -> Tuple[float, float]:
+    def train_round(self, t: int) -> Tuple[float, float, float, float, float]:
         """One federated round with constraint-based client selection."""
         # Group clients by cluster
         clusters: Dict[int, List[str]] = defaultdict(list)
@@ -532,19 +543,23 @@ class SnapCFL:
             model = model.cpu()
         return model.state_dict()
 
-    def evaluate(self) -> Tuple[float, float]:
-        """Evaluate by averaging accuracy across all cluster models."""
+    def evaluate(self) -> Tuple[float, float, float, float, float]:
+        """Evaluate by averaging metrics across all cluster models.
+        Returns (accuracy, loss, precision, recall, f1)."""
         if not self.cluster_models:
-            return 0.0, float("inf")
+            return 0.0, float("inf"), 0.0, 0.0, 0.0
 
         criterion = nn.CrossEntropyLoss()
-        total_acc, total_loss = 0.0, 0.0
+        total_acc = total_loss = total_prec = total_rec = total_f1 = 0.0
 
         for sd in self.cluster_models:
             model = copy.deepcopy(self._template_model)
             model.load_state_dict(sd)
             model = model.to(self._dev)
             model.eval()
+            all_preds: List[torch.Tensor] = []
+            all_targets_l: List[torch.Tensor] = []
+            num_classes = 2
             try:
                 loader = self.dataset.get_global_dataloader(batch_size=64, is_train=False)
                 correct, total, loss_sum = 0, 0, 0.0
@@ -554,16 +569,25 @@ class SnapCFL:
                         out = model(data)
                         if isinstance(out, tuple):
                             out = out[0]
+                        num_classes = out.shape[1]
                         loss_sum += criterion(out, target).item()
-                        correct  += out.argmax(1).eq(target).sum().item()
-                        total    += target.size(0)
+                        pred = out.argmax(1)
+                        correct += pred.eq(target).sum().item()
+                        total   += target.size(0)
+                        all_preds.append(pred.cpu())
+                        all_targets_l.append(target.cpu())
                 total_acc  += correct / max(total, 1)
                 total_loss += loss_sum / max(len(loader), 1)
+                preds_t   = torch.cat(all_preds)
+                targets_t = torch.cat(all_targets_l)
+                p, r, f = _compute_prf(preds_t, targets_t, num_classes)
+                total_prec += p; total_rec += r; total_f1 += f
             except Exception as e:
                 print(f"  SnapCFL evaluate error: {e}")
 
-        n = len(self.cluster_models)
-        return total_acc / max(n, 1), total_loss / max(n, 1)
+        n = max(len(self.cluster_models), 1)
+        return (total_acc / n, total_loss / n,
+                total_prec / n, total_rec / n, total_f1 / n)
 
     # ------------------------------------------------------------------
     # Cache helpers

@@ -18,6 +18,7 @@ import torch.nn.functional as _F
 from .apcfl import APCFL
 from .geofl import GeoFL
 from .ifca import IFCA
+from .metrics_utils import compute_prf as _compute_prf, find_convergence as _find_convergence
 from .snapcfl import SnapCFL
 
 class BaselineFLMethods:
@@ -74,61 +75,97 @@ class BaselineFLMethods:
         out_dir  = os.path.join(self._results_dir(), "baselines", f"{method}_{slug}")
         os.makedirs(out_dir, exist_ok=True)
 
-        accuracies    = result.get("accuracies",    [])
-        losses        = result.get("losses",        [])
-        extra_keys    = [k for k in result
-                         if k not in ("method", "accuracies", "losses",
-                                      "final_accuracy", "final_loss",
-                                      "total_time", "convergence_round")]
+        accuracies  = result.get("accuracies",  [])
+        losses      = result.get("losses",      [])
+        precisions  = result.get("precisions",  [])
+        recalls     = result.get("recalls",     [])
+        f1s         = result.get("f1s",         [])
+        round_times = result.get("round_times", [])
+        lrs         = result.get("learning_rates", [])
+        part_counts = result.get("participating_counts", [])
+
+        # Columns that are promoted to fixed per-round fields (not extra_keys)
+        _fixed = {"method", "accuracies", "losses", "precisions", "recalls", "f1s",
+                  "round_times", "learning_rates", "participating_counts",
+                  "final_accuracy", "final_loss", "final_precision", "final_recall",
+                  "final_f1", "total_time", "convergence_round"}
+        extra_keys = [k for k in result if k not in _fixed]
 
         # ── per-round metrics.csv ─────────────────────────────────────────
         metrics_path = os.path.join(out_dir, "metrics.csv")
-        metrics_fields = ["round", "accuracy", "loss"] + extra_keys
+        fixed_round_fields = [
+            "round", "accuracy", "loss", "precision", "recall", "f1",
+            "round_time_s", "learning_rate", "participating_devices",
+            "best_accuracy", "best_accuracy_round",
+        ]
+        metrics_fields = fixed_round_fields + extra_keys
+
+        best_so_far = 0.0
+        best_so_far_round = 1
         with open(metrics_path, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=metrics_fields, extrasaction="ignore")
             writer.writeheader()
             for r, (acc, loss) in enumerate(zip(accuracies, losses), start=1):
-                row: Dict[str, Any] = {"round": r, "accuracy": acc, "loss": loss}
-                # per-round lists stored in extra fields (e.g. cluster_counts, upload_counts)
+                if acc > best_so_far:
+                    best_so_far = acc
+                    best_so_far_round = r
+                row: Dict[str, Any] = {
+                    "round":                r,
+                    "accuracy":             acc,
+                    "loss":                 loss,
+                    "precision":            precisions[r - 1] if r - 1 < len(precisions) else "",
+                    "recall":               recalls[r - 1]    if r - 1 < len(recalls)    else "",
+                    "f1":                   f1s[r - 1]        if r - 1 < len(f1s)        else "",
+                    "round_time_s":         round_times[r - 1] if r - 1 < len(round_times) else "",
+                    "learning_rate":        lrs[r - 1]         if r - 1 < len(lrs)         else "",
+                    "participating_devices": part_counts[r - 1] if r - 1 < len(part_counts) else "",
+                    "best_accuracy":        best_so_far,
+                    "best_accuracy_round":  best_so_far_round,
+                }
                 for k in extra_keys:
                     v = result.get(k)
-                    if isinstance(v, list) and len(v) == len(accuracies):
-                        row[k] = v[r - 1]
-                    else:
-                        row[k] = ""
+                    row[k] = v[r - 1] if isinstance(v, list) and len(v) == len(accuracies) else ""
                 writer.writerow(row)
 
         # ── summary.csv ──────────────────────────────────────────────────
         summary_path = os.path.join(out_dir, "summary.csv")
-        # Build ordered column list: shared config cols, then hparams, then results
         shared_fields = [
             "method", "dataset", "num_rounds", "num_devices", "num_zones",
             "intra_zone_alpha", "inter_zone_alpha", "compression_rate",
         ]
         hparam_fields = [f"hp_{k}" for k in sorted(hparams.keys())]
         result_fields = [
-            "final_accuracy", "final_loss", "best_accuracy", "best_accuracy_round",
-            "total_time", "convergence_round",
+            "final_accuracy", "final_loss",
+            "final_precision", "final_recall", "final_f1",
+            "best_accuracy", "best_accuracy_round", "last_accuracy",
+            "total_time", "average_round_time", "convergence_round",
         ]
         all_fields = shared_fields + hparam_fields + result_fields
 
         best_acc   = max(accuracies) if accuracies else 0.0
         best_round = (accuracies.index(best_acc) + 1) if accuracies else 0
+        total_time = result.get("total_time", "")
+        avg_round_time = (total_time / len(accuracies)) if (accuracies and total_time != "") else ""
 
         row = {
-            "method":           method,
-            "dataset":          getattr(self.config, "dataset_name",    ""),
-            "num_rounds":       getattr(self.config, "num_rounds",       ""),
-            "num_devices":      getattr(self.config, "num_devices",      ""),
-            "num_zones":        getattr(self.config, "num_zones",        ""),
-            "intra_zone_alpha": getattr(self.config, "intra_zone_alpha", ""),
-            "inter_zone_alpha": getattr(self.config, "inter_zone_alpha", ""),
-            "compression_rate": getattr(self.config, "compression_rate", ""),
-            "final_accuracy":   result.get("final_accuracy", ""),
-            "final_loss":       result.get("final_loss",     ""),
-            "best_accuracy":    best_acc,
+            "method":            method,
+            "dataset":           getattr(self.config, "dataset_name",    ""),
+            "num_rounds":        getattr(self.config, "num_rounds",       ""),
+            "num_devices":       getattr(self.config, "num_devices",      ""),
+            "num_zones":         getattr(self.config, "num_zones",        ""),
+            "intra_zone_alpha":  getattr(self.config, "intra_zone_alpha", ""),
+            "inter_zone_alpha":  getattr(self.config, "inter_zone_alpha", ""),
+            "compression_rate":  getattr(self.config, "compression_rate", ""),
+            "final_accuracy":    result.get("final_accuracy",  ""),
+            "final_loss":        result.get("final_loss",      ""),
+            "final_precision":   precisions[-1] if precisions else "",
+            "final_recall":      recalls[-1]    if recalls    else "",
+            "final_f1":          f1s[-1]        if f1s        else "",
+            "best_accuracy":     best_acc,
             "best_accuracy_round": best_round,
-            "total_time":       result.get("total_time",       ""),
+            "last_accuracy":     accuracies[-1] if accuracies else "",
+            "total_time":        total_time,
+            "average_round_time": avg_round_time,
             "convergence_round": result.get("convergence_round", ""),
         }
         for k, v in hparams.items():
@@ -176,64 +213,71 @@ class BaselineFLMethods:
         """
         print("Running FedAvg baseline...")
         
-        # Initialize tracking
-        accuracies = []
-        losses = []
+        accuracies: List[float] = []
+        losses: List[float] = []
+        precisions: List[float] = []
+        recalls: List[float] = []
+        f1s: List[float] = []
+        round_times: List[float] = []
+        participating_counts: List[int] = []
         start_time = time.time()
-        
-        # Training loop
+
         try:
             for round_num in range(self.config.num_rounds):
-                round_time = time.time()
+                t0 = time.time()
 
-                # Sample participating devices
                 participating_devices = self._sample_devices(devices, 0.7)
-
-                # Collect device updates
                 device_updates = []
                 device_weights = []
+                active_count = 0
 
                 for device_id in participating_devices:
                     device = devices[device_id]
                     if not device.is_active or not device.local_dataset:
                         continue
-
-                    # Local training
                     local_model = copy.deepcopy(global_model)
                     local_model.load_state_dict(global_model.state_dict())
-
-                    # Train locally
                     training_result = self._train_local_model(
                         local_model, device.local_dataloader,
                         self.config.local_epochs, self.config.learning_rate
                     )
-
                     if training_result["success"]:
                         device_updates.append(training_result["model_weights"])
                         device_weights.append(device.dataset_size)
+                        active_count += 1
 
-                # FedAvg aggregation
                 if device_updates:
                     global_weights = self._fedavg_aggregate(device_updates, device_weights)
                     global_model.load_state_dict(global_weights)
 
-                # Evaluate
-                accuracy, loss = self._evaluate_model(global_model, dataset)
-                accuracies.append(accuracy)
-                losses.append(loss)
-                print(f"FedAvg Round {round_num + 1}: Accuracy={accuracy:.4f}, Loss={loss:.4f}, Time={time.time()-round_time:.2f}")
+                m = self._evaluate_model(global_model, dataset)
+                accuracies.append(m["accuracy"])
+                losses.append(m["loss"])
+                precisions.append(m["precision"])
+                recalls.append(m["recall"])
+                f1s.append(m["f1"])
+                round_times.append(time.time() - t0)
+                participating_counts.append(active_count)
+                print(f"FedAvg Round {round_num + 1}: Accuracy={m['accuracy']:.4f}, "
+                      f"Loss={m['loss']:.4f}, F1={m['f1']:.4f}, Time={round_times[-1]:.2f}s")
         except KeyboardInterrupt:
-            print(f"Training (FedProx) interrupted by user")
+            print("FedAvg training interrupted by user")
         total_time = time.time() - start_time
-        
+
         result = {
             "method": "FedAvg",
             "final_accuracy": accuracies[-1] if accuracies else 0.0,
-            "final_loss": losses[-1] if losses else float('inf'),
-            "accuracies": accuracies,
-            "losses": losses,
-            "total_time": total_time,
-            "convergence_round": self._find_convergence(accuracies)
+            "final_loss":     losses[-1]     if losses     else float('inf'),
+            "accuracies":     accuracies,
+            "losses":         losses,
+            "precisions":     precisions,
+            "recalls":        recalls,
+            "f1s":            f1s,
+            "round_times":    round_times,
+            "learning_rates": [self.config.learning_rate] * len(accuracies),
+            "participating_counts": participating_counts,
+            "total_time":          total_time,
+            "convergence_round":   self._find_convergence(accuracies),
         }
         self.save_baseline_results(result, {
             "num_rounds":    self.config.num_rounds,
@@ -253,60 +297,72 @@ class BaselineFLMethods:
         """
         print("Running FedProx baseline...")
         
-        mu = 0.01  # Proximal term coefficient
-        accuracies = []
-        losses = []
+        mu = 0.01
+        accuracies: List[float] = []
+        losses: List[float] = []
+        precisions: List[float] = []
+        recalls: List[float] = []
+        f1s: List[float] = []
+        round_times: List[float] = []
+        participating_counts: List[int] = []
         start_time = time.time()
 
         try:
             for round_num in range(self.config.num_rounds):
-                round_time = time.time()
+                t0 = time.time()
 
                 participating_devices = self._sample_devices(devices, 0.7)
                 device_updates = []
                 device_weights = []
+                active_count = 0
 
                 for device_id in participating_devices:
                     device = devices[device_id]
                     if not device.is_active or not device.local_dataset:
                         continue
-
-                    # Local training with proximal term
                     local_model = copy.deepcopy(global_model)
                     global_weights = {name: param.clone() for name, param in global_model.named_parameters()}
-
                     training_result = self._train_local_model_fedprox(
                         local_model, device.local_dataloader, global_weights,
                         self.config.local_epochs, self.config.learning_rate, mu
                     )
-
                     if training_result["success"]:
                         device_updates.append(training_result["model_weights"])
                         device_weights.append(device.dataset_size)
+                        active_count += 1
 
-                # Standard aggregation
                 if device_updates:
                     global_weights = self._fedavg_aggregate(device_updates, device_weights)
                     global_model.load_state_dict(global_weights)
 
-                # Evaluate
-                accuracy, loss = self._evaluate_model(global_model, dataset)
-                accuracies.append(accuracy)
-                losses.append(loss)
-
-                print(f"FedProx Round {round_num + 1}: Accuracy={accuracy:.4f}, Loss={loss:.4f}, Time={time.time()-round_time:.2f}")
+                m = self._evaluate_model(global_model, dataset)
+                accuracies.append(m["accuracy"])
+                losses.append(m["loss"])
+                precisions.append(m["precision"])
+                recalls.append(m["recall"])
+                f1s.append(m["f1"])
+                round_times.append(time.time() - t0)
+                participating_counts.append(active_count)
+                print(f"FedProx Round {round_num + 1}: Accuracy={m['accuracy']:.4f}, "
+                      f"Loss={m['loss']:.4f}, F1={m['f1']:.4f}, Time={round_times[-1]:.2f}s")
         except KeyboardInterrupt:
-            print(f"Training (FedProx) interrupted by user")
+            print("FedProx training interrupted by user")
         total_time = time.time() - start_time
-        
+
         result = {
             "method": "FedProx",
             "final_accuracy": accuracies[-1] if accuracies else 0.0,
-            "final_loss": losses[-1] if losses else float('inf'),
-            "accuracies": accuracies,
-            "losses": losses,
-            "total_time": total_time,
-            "convergence_round": self._find_convergence(accuracies)
+            "final_loss":     losses[-1]     if losses     else float('inf'),
+            "accuracies":     accuracies,
+            "losses":         losses,
+            "precisions":     precisions,
+            "recalls":        recalls,
+            "f1s":            f1s,
+            "round_times":    round_times,
+            "learning_rates": [self.config.learning_rate] * len(accuracies),
+            "participating_counts": participating_counts,
+            "total_time":          total_time,
+            "convergence_round":   self._find_convergence(accuracies),
         }
         self.save_baseline_results(result, {
             "num_rounds":    self.config.num_rounds,
@@ -338,22 +394,25 @@ class BaselineFLMethods:
             end_idx = start_idx + cluster_size if i < num_clusters - 1 else len(device_list)
             clusters.append(device_list[start_idx:end_idx])
         
-        accuracies = []
-        losses = []
+        accuracies: List[float] = []
+        losses: List[float] = []
+        precisions: List[float] = []
+        recalls: List[float] = []
+        f1s: List[float] = []
+        round_times: List[float] = []
+        participating_counts: List[int] = []
         start_time = time.time()
+
         try:
             for round_num in range(self.config.num_rounds):
-                round_time = time.time()
-
-                # Two-level aggregation
+                t0 = time.time()
                 cluster_models = []
                 cluster_weights = []
+                active_count = 0
 
                 for cluster in clusters:
-                    # Intra-cluster aggregation — 70% participation per cluster
                     cluster_device_updates = []
                     cluster_device_weights = []
-
                     cluster_devices = {d: devices[d] for d in cluster if d in devices}
                     selected = self._sample_devices(cluster_devices, 0.7)
 
@@ -364,41 +423,49 @@ class BaselineFLMethods:
                             local_model, device.local_dataloader,
                             self.config.local_epochs, self.config.learning_rate
                         )
-
                         if training_result["success"]:
                             cluster_device_updates.append(training_result["model_weights"])
                             cluster_device_weights.append(device.dataset_size)
+                            active_count += 1
 
-                    # Aggregate within cluster
                     if cluster_device_updates:
                         cluster_model = self._fedavg_aggregate(cluster_device_updates, cluster_device_weights)
                         cluster_models.append(cluster_model)
                         cluster_weights.append(sum(cluster_device_weights))
 
-                # Inter-cluster aggregation
                 if cluster_models:
                     global_weights = self._fedavg_aggregate(cluster_models, cluster_weights)
                     global_model.load_state_dict(global_weights)
 
-                # Evaluate
-                accuracy, loss = self._evaluate_model(global_model, dataset)
-                accuracies.append(accuracy)
-                losses.append(loss)
-
-                print(f"HierFL Round {round_num + 1}: Accuracy={accuracy:.4f}, Loss={loss:.4f}, Time={time.time()-round_time:.2f}")
+                m = self._evaluate_model(global_model, dataset)
+                accuracies.append(m["accuracy"])
+                losses.append(m["loss"])
+                precisions.append(m["precision"])
+                recalls.append(m["recall"])
+                f1s.append(m["f1"])
+                round_times.append(time.time() - t0)
+                participating_counts.append(active_count)
+                print(f"HierFL Round {round_num + 1}: Accuracy={m['accuracy']:.4f}, "
+                      f"Loss={m['loss']:.4f}, F1={m['f1']:.4f}, Time={round_times[-1]:.2f}s")
         except KeyboardInterrupt:
-            print(f"Training (HierFL) interrupted by user")
+            print("HierFL training interrupted by user")
         total_time = time.time() - start_time
-        
+
         result = {
             "method": "HierFL",
             "final_accuracy": accuracies[-1] if accuracies else 0.0,
-            "final_loss": losses[-1] if losses else float('inf'),
-            "accuracies": accuracies,
-            "losses": losses,
-            "total_time": total_time,
-            "convergence_round": self._find_convergence(accuracies),
-            "num_clusters": num_clusters,
+            "final_loss":     losses[-1]     if losses     else float('inf'),
+            "accuracies":     accuracies,
+            "losses":         losses,
+            "precisions":     precisions,
+            "recalls":        recalls,
+            "f1s":            f1s,
+            "round_times":    round_times,
+            "learning_rates": [self.config.learning_rate] * len(accuracies),
+            "participating_counts": participating_counts,
+            "total_time":          total_time,
+            "convergence_round":   self._find_convergence(accuracies),
+            "num_clusters":        num_clusters,
         }
         self.save_baseline_results(result, {
             "num_rounds":    self.config.num_rounds,
@@ -426,7 +493,13 @@ class BaselineFLMethods:
         recluster_every = 1
 
         start_time = time.time()
-        accuracies, losses = [], []
+        accuracies: List[float] = []
+        losses: List[float] = []
+        precisions: List[float] = []
+        recalls: List[float] = []
+        f1s: List[float] = []
+        round_times: List[float] = []
+        participating_counts: List[int] = []
 
         # template for converting vectors ↔ state_dict
         template_state_dict = global_model.state_dict()
@@ -436,32 +509,31 @@ class BaselineFLMethods:
 
         try:
             for round_num in range(self.config.num_rounds):
-                round_time = time.time()
+                t0 = time.time()
 
-                # --- Sample participants (70% via shared helper) ---
                 participating = self._sample_devices(devices, participation_rate)
                 local_state_dicts = {}
                 device_weights = []
+                active_count = 0
 
-                # --- Local training ---
                 for cid in participating:
                     device = devices[cid]
                     if not device.is_active or not device.local_dataset:
                         continue
-
                     local_model = copy.deepcopy(global_model)
                     res = self._train_local_model(local_model, device.local_dataloader,
                                             self.config.local_epochs, self.config.learning_rate)
                     if not res.get("success", False):
                         continue
-
                     local_state_dicts[cid] = res["model_weights"]
                     device_weights.append(device.dataset_size)
+                    active_count += 1
 
                 if not local_state_dicts:
-                    acc, loss = self._evaluate_model(global_model, dataset)
-                    accuracies.append(acc)
-                    losses.append(loss)
+                    m = self._evaluate_model(global_model, dataset)
+                    accuracies.append(m["accuracy"]); losses.append(m["loss"])
+                    precisions.append(m["precision"]); recalls.append(m["recall"]); f1s.append(m["f1"])
+                    round_times.append(time.time() - t0); participating_counts.append(0)
                     continue
 
                 client_ids = list(local_state_dicts.keys())
@@ -504,20 +576,28 @@ class BaselineFLMethods:
                 global_weights = self._fedavg_aggregate(updated_state_dicts, device_weights)
                 global_model.load_state_dict(global_weights)
 
-                # --- Eval ---
-                acc, loss = self._evaluate_model(global_model, dataset)
-                accuracies.append(acc)
-                losses.append(loss)
-                print(f"ClusterFL Round {round_num + 1}: Accuracy={acc:.4f}, Loss={loss:.4f}, Time={time.time()-round_time:.2f}")
+                m = self._evaluate_model(global_model, dataset)
+                accuracies.append(m["accuracy"]); losses.append(m["loss"])
+                precisions.append(m["precision"]); recalls.append(m["recall"]); f1s.append(m["f1"])
+                round_times.append(time.time() - t0); participating_counts.append(active_count)
+                print(f"ClusterFL Round {round_num + 1}: Accuracy={m['accuracy']:.4f}, "
+                      f"Loss={m['loss']:.4f}, F1={m['f1']:.4f}, Time={round_times[-1]:.2f}s")
         except KeyboardInterrupt:
-            print("Training (ClusterFL) interrupted by user")
+            print("ClusterFL training interrupted by user")
         result = {
             "method": "ClusterFL",
             "final_accuracy": accuracies[-1] if accuracies else 0.0,
-            "final_loss": losses[-1] if losses else float('inf'),
-            "accuracies": accuracies,
-            "losses": losses,
-            "total_time": time.time() - start_time,
+            "final_loss":     losses[-1]     if losses     else float('inf'),
+            "accuracies":     accuracies,
+            "losses":         losses,
+            "precisions":     precisions,
+            "recalls":        recalls,
+            "f1s":            f1s,
+            "round_times":    round_times,
+            "learning_rates": [self.config.learning_rate] * len(accuracies),
+            "participating_counts": participating_counts,
+            "total_time":          time.time() - start_time,
+            "convergence_round":   self._find_convergence(accuracies),
         }
         self.save_baseline_results(result, {
             "num_rounds":      self.config.num_rounds,
@@ -790,58 +870,57 @@ class BaselineFLMethods:
         
         return aggregated_weights
     
-    def _evaluate_model(self, model: nn.Module, dataset: Any) -> Tuple[float, float]:
-        """Evaluate model on test dataset"""
-        # Move model to appropriate device
+    def _evaluate_model(self, model: nn.Module, dataset: Any) -> Dict[str, float]:
+        """Evaluate model on test dataset. Returns accuracy, loss, precision, recall, f1."""
         device = self.config.device
         if device == 'cuda' and torch.cuda.is_available():
             model = model.cuda()
         else:
             model = model.cpu()
             device = 'cpu'
-        
+
         model.eval()
-        
+        total_loss = 0.0
+        correct = 0
+        total = 0
+        all_preds: List[torch.Tensor] = []
+        all_targets: List[torch.Tensor] = []
+        criterion = nn.CrossEntropyLoss()
+        if device == 'cuda':
+            criterion = criterion.cuda()
+        num_classes = 2  # fallback; updated inside loop
+
         try:
             test_dataloader = dataset.get_global_dataloader(batch_size=64, is_train=False)
-            
-            total_loss = 0.0
-            correct = 0
-            total = 0
-            criterion = nn.CrossEntropyLoss()
-            
-            # Move criterion to same device
-            if device == 'cuda':
-                criterion = criterion.cuda()
-            
             with torch.no_grad():
                 for data, target in test_dataloader:
-                    # Move data to device
                     if device == 'cuda':
                         data, target = data.cuda(), target.cuda()
-                    
                     output = model(data)
-                    
                     if isinstance(output, tuple):
                         output = output[0]
-                    
-                    loss = criterion(output, target)
-                    total_loss += loss.detach().item()
-                    
-                    pred = output.argmax(dim=1, keepdim=True)
-                    correct += pred.eq(target.view_as(pred)).sum().item()
+                    num_classes = output.shape[1]
+                    total_loss += criterion(output, target).detach().item()
+                    pred = output.argmax(dim=1)
+                    correct += pred.eq(target).sum().item()
                     total += target.size(0)
-            
+                    all_preds.append(pred.cpu())
+                    all_targets.append(target.cpu())
+
             accuracy = correct / max(total, 1)
             avg_loss = total_loss / max(len(test_dataloader), 1)
-            
+
+            preds_t = torch.cat(all_preds)
+            targets_t = torch.cat(all_targets)
+            precision, recall, f1 = _compute_prf(preds_t, targets_t, num_classes)
+
         except Exception as e:
             print(f"Evaluation error: {e}")
-            accuracy = 0.0
-            avg_loss = float('inf')
-        
+            accuracy, avg_loss, precision, recall, f1 = 0.0, float('inf'), 0.0, 0.0, 0.0
+
         model.train()
-        return accuracy, avg_loss
+        return {"accuracy": accuracy, "loss": avg_loss,
+                "precision": precision, "recall": recall, "f1": f1}
     
     def _find_convergence(self, accuracies: List[float], window_size: int = 10) -> int:
         """Find convergence round based on accuracy stabilization"""
