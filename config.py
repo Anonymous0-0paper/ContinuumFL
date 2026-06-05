@@ -40,12 +40,20 @@ class ContinuumFLConfig:
         self.weight_decay = 1e-4
         
         # Aggregation Parameters
-        self.spatial_regularization = 0.1  # λ - spatial regularization
+        self.spatial_regularization = 0.05  # λ - spatial regularization
         self.momentum_eta = 0.9             # η - momentum for correlation update
-        self.staleness_penalty = 0.01       # μ - staleness penalty
+        self.staleness_penalty = 0.001       # μ - staleness penalty
         self.max_staleness = 5             # τ_max - maximum staleness
-        self.fairness_strength = 0.5       # α_fair - fairness enforcement
+        self.fairness_strength = 0.3       # α_fair - fairness enforcement
         
+        # LR Scheduler
+        self.enable_lr_scheduler = False  # per-dataset scheduler (StepLR/Cosine/ReduceLROnPlateau)
+
+        # Early Stopping
+        self.enable_early_stopping = False
+        self.early_stopping_patience = 20   # rounds without improvement before stopping
+        self.early_stopping_min_delta = 1e-4  # minimum accuracy gain to count as improvement
+
         # Communication Optimization
         self.compression_rate = 0.1      # κ - gradient compression rate (top-k)
         self.quantization_bits = 8       # bits for delta encoding
@@ -88,7 +96,19 @@ class ContinuumFLConfig:
                 'embedding_dim': 64,
                 'hidden_dim': 256,
                 'num_layers': 3
-            }
+            },
+            'ucihar': {
+                'model_type': 'cnn_lstm',
+                'num_classes': 6,
+                'num_channels': 9,
+                'lstm_hidden': 128,
+                'input_shape': (9, 128),
+            },
+            'speechcommands': {
+                'model_type': 'cnn2d',
+                'num_classes': 35,
+                'input_shape': (1, 64, 101),
+            },
         }
         
         # Logging and Visualization
@@ -106,7 +126,55 @@ class ContinuumFLConfig:
         self.num_workers = 4             # for data loading
         
         # Baseline Comparisons
-        self.baselines = ['fedavg', 'fedprox', 'hierfl', 'clusterfl']
+        self.baselines = ['fedavg', 'fedprox', 'hierfl', 'clusterfl', 'apcfl', 'ifca', 'snapcfl']
+
+        # GeoFL hyperparameters (namespaced per integration spec)
+        self.geofl_num_rounds = self.num_rounds
+        self.geofl_local_epochs = 1
+        self.geofl_local_steps = 5          # LocalSGD steps per client (paper default)
+        self.geofl_batch_size = 16          # paper default
+        self.geofl_lr = 0.001
+        self.geofl_S0 = 0.01               # initial importance threshold
+        self.geofl_S_min = 0.001           # lower bound on threshold
+        self.geofl_alpha = 0.95            # decay factor α
+        self.geofl_R0 = 5                  # upload up-bound R0
+        self.geofl_beta = 0.2              # staleness exponent β
+        self.geofl_client_sampling_rate = 0.7
+
+        # IFCA hyperparameters (NeurIPS 2020)
+        self.ifca_num_rounds     = self.num_rounds
+        self.ifca_k              = 4          # number of clusters (dataset-dependent)
+        self.ifca_local_steps    = 5          # local SGD steps τ
+        self.ifca_lr             = 0.01       # step size γ
+        self.ifca_lr_decay       = 1.0        # per-round LR multiplier (0.99 for CIFAR)
+        self.ifca_batch_size     = 32
+        self.ifca_sampling_rate  = 0.7
+        self.ifca_variant        = "model"    # "model" (Option II) | "gradient" (Option I)
+        self.ifca_weight_sharing = False      # True → shared layers FedAvg, final layer IFCA
+
+        # SnapCFL hyperparameters (IEEE TMC 2025)
+        self.snapcfl_num_rounds          = self.num_rounds
+        self.snapcfl_lr                  = 0.01
+        self.snapcfl_batch_size          = 32
+        self.snapcfl_local_epochs        = 5
+        self.snapcfl_sampling_rate       = 0.7
+        self.snapcfl_pre_cluster_rounds  = 10    # rounds of FedAvg per pairwise classifier
+        self.snapcfl_eps                 = 0.25  # DBSCAN ε
+        self.snapcfl_min_samples         = 2     # DBSCAN min_samples
+        self.snapcfl_classifier_type     = "lr"  # "lr" | "cnn"
+        self.snapcfl_intra_algo          = "fedavg"  # "fedavg" | "fedprox"
+        self.snapcfl_global_averaging    = False
+        self.snapcfl_mu_fedprox          = 0.01
+        self.snapcfl_H                   = 10    # frequency constraint window
+        self.snapcfl_c_thre              = 3     # max selections per window
+
+        # AP-CFL hyperparameters (namespaced per integration spec)
+        self.apcfl_num_rounds = self.num_rounds   # matches main num_rounds by default
+        self.apcfl_local_epochs = 1               # paper default
+        self.apcfl_batch_size = 32                # paper default (MNIST); 16 for others
+        self.apcfl_lr = 0.0001                    # paper default
+        self.apcfl_lambda = 0.05                  # encoder regularisation (paper default)
+        self.apcfl_sampling_rate = 0.7            # client participation rate α
         
         # Advanced Features
         self.enable_differential_privacy = False

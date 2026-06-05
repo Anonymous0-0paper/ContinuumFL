@@ -261,6 +261,76 @@ class ZoneDiscovery:
                     final_clusters.append(small_cluster)  # Keep as separate zone
         
         return final_clusters
+
+    def _split_cluster_by_locations(self, cluster: Set[int], devices: List[EdgeDevice]) -> List[Set[int]]:
+        """Split a cluster into two spatial sub-clusters when possible."""
+        if len(cluster) <= 1:
+            return [cluster]
+
+        cluster_indices = list(cluster)
+        locations = np.array([devices[i].location for i in cluster_indices])
+
+        if len(cluster_indices) == 2:
+            return [{cluster_indices[0]}, {cluster_indices[1]}]
+
+        kmeans = KMeans(n_clusters=2, random_state=42, n_init=10)
+        labels = kmeans.fit_predict(locations)
+
+        split_clusters = defaultdict(set)
+        for device_idx, label in zip(cluster_indices, labels):
+            split_clusters[label].add(device_idx)
+
+        return [subcluster for subcluster in split_clusters.values() if subcluster]
+
+    def _enforce_target_zone_count(self, clusters: List[Set[int]],
+                                  devices: List[EdgeDevice]) -> List[Set[int]]:
+        """Force the final cluster count toward the requested number of zones."""
+        target_zones = self.config.num_zones
+
+        # Split oversized clusters until we have at least the target number of zones.
+        while len(clusters) < target_zones:
+            split_candidate_idx = None
+            largest_size = 1
+            for idx, cluster in enumerate(clusters):
+                if len(cluster) > largest_size:
+                    largest_size = len(cluster)
+                    split_candidate_idx = idx
+
+            if split_candidate_idx is None:
+                break
+
+            cluster_to_split = clusters.pop(split_candidate_idx)
+            split_clusters = self._split_cluster_by_locations(cluster_to_split, devices)
+
+            # If splitting did not increase the number of clusters, stop.
+            if len(split_clusters) <= 1:
+                clusters.insert(split_candidate_idx, cluster_to_split)
+                break
+
+            clusters.extend(split_clusters)
+
+        # Merge the smallest clusters back together if we overshot the target count.
+        while len(clusters) > target_zones:
+            clusters = sorted(clusters, key=len)
+            cluster_a = clusters.pop(0)
+            best_idx = None
+            best_similarity = -1.0
+
+            for idx, cluster_b in enumerate(clusters):
+                if len(cluster_a) + len(cluster_b) <= self.max_zone_size:
+                    similarity = self._compute_cluster_similarity(cluster_a, cluster_b, devices)
+                    if similarity > best_similarity:
+                        best_similarity = similarity
+                        best_idx = idx
+
+            if best_idx is None:
+                # If no valid merge exists, keep the cluster count as close as possible.
+                clusters.append(cluster_a)
+                break
+
+            clusters[best_idx] = clusters[best_idx].union(cluster_a)
+
+        return clusters
     
     def _compute_cluster_similarity(self, cluster_i: Set[int], cluster_j: Set[int],
                                   devices: List[EdgeDevice]) -> float:
@@ -381,6 +451,7 @@ class ZoneDiscovery:
         # Phase 2: Size constraint enforcement
         clusters = self.split_large_clusters(clusters, active_devices)
         clusters = self.merge_small_clusters(clusters, active_devices)
+        clusters = self._enforce_target_zone_count(clusters, active_devices)
         
         # Phase 3: Create zones from clusters
         zones = {}

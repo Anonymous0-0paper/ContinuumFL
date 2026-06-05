@@ -3,6 +3,9 @@ Baseline federated learning methods for comparison with ContinuumFL.
 Implements FedAvg, FedProx, HierFL, and ClusterFL.
 """
 
+import csv
+import os
+import re
 import torch
 import torch.nn as nn
 import numpy as np
@@ -12,6 +15,10 @@ from collections import defaultdict
 from sklearn.cluster import KMeans
 import copy
 import torch.nn.functional as _F
+from .apcfl import APCFL
+from .geofl import GeoFL
+from .ifca import IFCA
+from .snapcfl import SnapCFL
 
 class BaselineFLMethods:
     """
@@ -21,7 +28,122 @@ class BaselineFLMethods:
     def __init__(self, config):
         self.config = config
         self.baseline_results = {}
-    
+
+    # ------------------------------------------------------------------
+    # CSV persistence helpers
+    # ------------------------------------------------------------------
+
+    def _results_dir(self) -> str:
+        """Return (and create) the run-level results directory."""
+        base = getattr(self.config, "results_dir", "./results")
+        dataset  = getattr(self.config, "dataset_name",   "unknown")
+        intra    = getattr(self.config, "intra_zone_alpha", "?")
+        inter    = getattr(self.config, "inter_zone_alpha", "?")
+        comp     = getattr(self.config, "compression_rate", 0)
+        devices  = getattr(self.config, "num_devices",      "?")
+        zones    = getattr(self.config, "num_zones",        "?")
+        comp_pct = int(round(float(comp) * 100))
+        run_name = (f"{dataset}__intra{intra}__inter{inter}"
+                    f"__comp{comp_pct}pct__dev{devices}__zones{zones}")
+        path = os.path.join(base, run_name)
+        os.makedirs(path, exist_ok=True)
+        return path
+
+    @staticmethod
+    def _slug(hparams: Dict[str, Any]) -> str:
+        """Turn a hyperparameter dict into a short filesystem-safe string."""
+        parts = []
+        for k, v in sorted(hparams.items()):
+            # shorten key: remove common prefixes, keep last word
+            short_k = re.sub(r'^[a-z]+_', '', k)
+            parts.append(f"{short_k}{v}")
+        slug = "_".join(parts)
+        # replace characters that are unsafe in filenames
+        return re.sub(r'[^A-Za-z0-9._-]', '', slug)[:120]
+
+    def save_baseline_results(self, result: Dict[str, Any], hparams: Dict[str, Any]):
+        """
+        Persist baseline results to CSV files inside the run results directory.
+
+        Creates two files:
+          {results_dir}/baselines/{METHOD}_{hparam-slug}/metrics.csv   — one row per round
+          {results_dir}/baselines/{METHOD}_{hparam-slug}/summary.csv   — single summary row
+        """
+        method   = result.get("method", "unknown")
+        slug     = self._slug(hparams)
+        out_dir  = os.path.join(self._results_dir(), "baselines", f"{method}_{slug}")
+        os.makedirs(out_dir, exist_ok=True)
+
+        accuracies    = result.get("accuracies",    [])
+        losses        = result.get("losses",        [])
+        extra_keys    = [k for k in result
+                         if k not in ("method", "accuracies", "losses",
+                                      "final_accuracy", "final_loss",
+                                      "total_time", "convergence_round")]
+
+        # ── per-round metrics.csv ─────────────────────────────────────────
+        metrics_path = os.path.join(out_dir, "metrics.csv")
+        metrics_fields = ["round", "accuracy", "loss"] + extra_keys
+        with open(metrics_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=metrics_fields, extrasaction="ignore")
+            writer.writeheader()
+            for r, (acc, loss) in enumerate(zip(accuracies, losses), start=1):
+                row: Dict[str, Any] = {"round": r, "accuracy": acc, "loss": loss}
+                # per-round lists stored in extra fields (e.g. cluster_counts, upload_counts)
+                for k in extra_keys:
+                    v = result.get(k)
+                    if isinstance(v, list) and len(v) == len(accuracies):
+                        row[k] = v[r - 1]
+                    else:
+                        row[k] = ""
+                writer.writerow(row)
+
+        # ── summary.csv ──────────────────────────────────────────────────
+        summary_path = os.path.join(out_dir, "summary.csv")
+        # Build ordered column list: shared config cols, then hparams, then results
+        shared_fields = [
+            "method", "dataset", "num_rounds", "num_devices", "num_zones",
+            "intra_zone_alpha", "inter_zone_alpha", "compression_rate",
+        ]
+        hparam_fields = [f"hp_{k}" for k in sorted(hparams.keys())]
+        result_fields = [
+            "final_accuracy", "final_loss", "best_accuracy", "best_accuracy_round",
+            "total_time", "convergence_round",
+        ]
+        all_fields = shared_fields + hparam_fields + result_fields
+
+        best_acc   = max(accuracies) if accuracies else 0.0
+        best_round = (accuracies.index(best_acc) + 1) if accuracies else 0
+
+        row = {
+            "method":           method,
+            "dataset":          getattr(self.config, "dataset_name",    ""),
+            "num_rounds":       getattr(self.config, "num_rounds",       ""),
+            "num_devices":      getattr(self.config, "num_devices",      ""),
+            "num_zones":        getattr(self.config, "num_zones",        ""),
+            "intra_zone_alpha": getattr(self.config, "intra_zone_alpha", ""),
+            "inter_zone_alpha": getattr(self.config, "inter_zone_alpha", ""),
+            "compression_rate": getattr(self.config, "compression_rate", ""),
+            "final_accuracy":   result.get("final_accuracy", ""),
+            "final_loss":       result.get("final_loss",     ""),
+            "best_accuracy":    best_acc,
+            "best_accuracy_round": best_round,
+            "total_time":       result.get("total_time",       ""),
+            "convergence_round": result.get("convergence_round", ""),
+        }
+        for k, v in hparams.items():
+            row[f"hp_{k}"] = v
+
+        write_header = not os.path.exists(summary_path)
+        with open(summary_path, "a", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=all_fields, extrasaction="ignore")
+            if write_header:
+                writer.writeheader()
+            writer.writerow(row)
+
+        print(f"  [{method}] metrics → {metrics_path}")
+        print(f"  [{method}] summary → {summary_path}")
+
     def run_method(self, method_name: str, devices: Dict[str, Any], 
                   global_model: nn.Module, dataset: Any) -> Dict[str, Any]:
         """Run a specific baseline method"""
@@ -34,6 +156,14 @@ class BaselineFLMethods:
             return self._run_hierfl(devices, global_model, dataset)
         elif method_name.lower() == 'clusterfl':
             return self._run_clusterfl(devices, global_model, dataset)
+        elif method_name.lower() in ('apcfl', 'ap-cfl', 'ap_cfl'):
+            return self._run_apcfl(devices, global_model, dataset)
+        elif method_name.lower() in ('geofl', 'geo-fl', 'geo_fl'):
+            return self._run_geofl(devices, global_model, dataset)
+        elif method_name.lower() in ('ifca',):
+            return self._run_ifca(devices, global_model, dataset)
+        elif method_name.lower() in ('snapcfl', 'snap-cfl', 'snap_cfl'):
+            return self._run_snapcfl(devices, global_model, dataset)
         else:
             raise ValueError(f"Unknown baseline method: {method_name}")
     
@@ -96,7 +226,7 @@ class BaselineFLMethods:
             print(f"Training (FedProx) interrupted by user")
         total_time = time.time() - start_time
         
-        return {
+        result = {
             "method": "FedAvg",
             "final_accuracy": accuracies[-1] if accuracies else 0.0,
             "final_loss": losses[-1] if losses else float('inf'),
@@ -105,6 +235,14 @@ class BaselineFLMethods:
             "total_time": total_time,
             "convergence_round": self._find_convergence(accuracies)
         }
+        self.save_baseline_results(result, {
+            "num_rounds":    self.config.num_rounds,
+            "local_epochs":  self.config.local_epochs,
+            "learning_rate": self.config.learning_rate,
+            "batch_size":    self.config.batch_size,
+            "sampling_rate": 0.7,
+        })
+        return result
     
     def _run_fedprox(self, devices: Dict[str, Any], global_model: nn.Module, 
                     dataset: Any) -> Dict[str, Any]:
@@ -161,7 +299,7 @@ class BaselineFLMethods:
             print(f"Training (FedProx) interrupted by user")
         total_time = time.time() - start_time
         
-        return {
+        result = {
             "method": "FedProx",
             "final_accuracy": accuracies[-1] if accuracies else 0.0,
             "final_loss": losses[-1] if losses else float('inf'),
@@ -170,6 +308,15 @@ class BaselineFLMethods:
             "total_time": total_time,
             "convergence_round": self._find_convergence(accuracies)
         }
+        self.save_baseline_results(result, {
+            "num_rounds":    self.config.num_rounds,
+            "local_epochs":  self.config.local_epochs,
+            "learning_rate": self.config.learning_rate,
+            "batch_size":    self.config.batch_size,
+            "mu":            0.01,
+            "sampling_rate": 0.7,
+        })
+        return result
     
     def _run_hierfl(self, devices: Dict[str, Any], global_model: nn.Module, 
                    dataset: Any) -> Dict[str, Any]:
@@ -203,25 +350,24 @@ class BaselineFLMethods:
                 cluster_weights = []
 
                 for cluster in clusters:
-                    # Intra-cluster aggregation
+                    # Intra-cluster aggregation — 70% participation per cluster
                     cluster_device_updates = []
                     cluster_device_weights = []
 
-                    for device_id in cluster:
+                    cluster_devices = {d: devices[d] for d in cluster if d in devices}
+                    selected = self._sample_devices(cluster_devices, 0.7)
+
+                    for device_id in selected:
                         device = devices[device_id]
-                        if not device.is_active or not device.local_dataset:
-                            continue
+                        local_model = copy.deepcopy(global_model)
+                        training_result = self._train_local_model(
+                            local_model, device.local_dataloader,
+                            self.config.local_epochs, self.config.learning_rate
+                        )
 
-                        if np.random.random() < 0.7:  # Participation probability
-                            local_model = copy.deepcopy(global_model)
-                            training_result = self._train_local_model(
-                                local_model, device.local_dataloader,
-                                self.config.local_epochs, self.config.learning_rate
-                            )
-
-                            if training_result["success"]:
-                                cluster_device_updates.append(training_result["model_weights"])
-                                cluster_device_weights.append(device.dataset_size)
+                        if training_result["success"]:
+                            cluster_device_updates.append(training_result["model_weights"])
+                            cluster_device_weights.append(device.dataset_size)
 
                     # Aggregate within cluster
                     if cluster_device_updates:
@@ -244,7 +390,7 @@ class BaselineFLMethods:
             print(f"Training (HierFL) interrupted by user")
         total_time = time.time() - start_time
         
-        return {
+        result = {
             "method": "HierFL",
             "final_accuracy": accuracies[-1] if accuracies else 0.0,
             "final_loss": losses[-1] if losses else float('inf'),
@@ -252,8 +398,17 @@ class BaselineFLMethods:
             "losses": losses,
             "total_time": total_time,
             "convergence_round": self._find_convergence(accuracies),
-            "num_clusters": num_clusters
+            "num_clusters": num_clusters,
         }
+        self.save_baseline_results(result, {
+            "num_rounds":    self.config.num_rounds,
+            "local_epochs":  self.config.local_epochs,
+            "learning_rate": self.config.learning_rate,
+            "batch_size":    self.config.batch_size,
+            "num_clusters":  num_clusters,
+            "sampling_rate": 0.7,
+        })
+        return result
 
     def _run_clusterfl(self, devices, global_model, dataset):
         """
@@ -283,10 +438,8 @@ class BaselineFLMethods:
             for round_num in range(self.config.num_rounds):
                 round_time = time.time()
 
-                # --- Sample participants ---
-                participating = np.random.choice(list(devices.keys()),
-                                                 int(len(devices) * participation_rate),
-                                                 replace=False)
+                # --- Sample participants (70% via shared helper) ---
+                participating = self._sample_devices(devices, participation_rate)
                 local_state_dicts = {}
                 device_weights = []
 
@@ -358,14 +511,99 @@ class BaselineFLMethods:
                 print(f"ClusterFL Round {round_num + 1}: Accuracy={acc:.4f}, Loss={loss:.4f}, Time={time.time()-round_time:.2f}")
         except KeyboardInterrupt:
             print("Training (ClusterFL) interrupted by user")
-        return {
+        result = {
             "method": "ClusterFL",
             "final_accuracy": accuracies[-1] if accuracies else 0.0,
             "final_loss": losses[-1] if losses else float('inf'),
             "accuracies": accuracies,
             "losses": losses,
-            "total_time": time.time() - start_time
+            "total_time": time.time() - start_time,
         }
+        self.save_baseline_results(result, {
+            "num_rounds":      self.config.num_rounds,
+            "local_epochs":    self.config.local_epochs,
+            "learning_rate":   self.config.learning_rate,
+            "batch_size":      self.config.batch_size,
+            "rho":             0.01,
+            "temperature":     1.0,
+            "sampling_rate":   participation_rate,
+        })
+        return result
+
+    def _run_apcfl(self, devices: Dict[str, Any], global_model: nn.Module,
+                   dataset: Any) -> Dict[str, Any]:
+        """AP-CFL: Affinity-Propagation Clustered FL with TDI-weighted aggregation."""
+        print("Running AP-CFL baseline...")
+        apcfl = APCFL(self.config, devices, global_model, dataset)
+        result = apcfl.run()
+        self.save_baseline_results(result, {
+            "num_rounds":      getattr(self.config, "apcfl_num_rounds",      self.config.num_rounds),
+            "local_epochs":    getattr(self.config, "apcfl_local_epochs",    1),
+            "learning_rate":   getattr(self.config, "apcfl_lr",              0.0001),
+            "lambda":          getattr(self.config, "apcfl_lambda",          0.05),
+            "sampling_rate":   getattr(self.config, "apcfl_sampling_rate",   0.7),
+            "batch_size":      getattr(self.config, "apcfl_batch_size",      32),
+        })
+        return result
+
+    def _run_geofl(self, devices: Dict[str, Any], global_model: nn.Module,
+                   dataset: Any) -> Dict[str, Any]:
+        """GeoFL: geo-distributed hierarchical FL with importance-aware aggregation."""
+        print("Running GeoFL baseline...")
+        geofl = GeoFL(self.config, devices, global_model, dataset)
+        result = geofl.run()
+        self.save_baseline_results(result, {
+            "num_rounds":      getattr(self.config, "geofl_num_rounds",             self.config.num_rounds),
+            "local_steps":     getattr(self.config, "geofl_local_steps",            5),
+            "learning_rate":   getattr(self.config, "geofl_lr",                     0.001),
+            "S0":              getattr(self.config, "geofl_S0",                     0.01),
+            "S_min":           getattr(self.config, "geofl_S_min",                  0.001),
+            "alpha":           getattr(self.config, "geofl_alpha",                  0.95),
+            "R0":              getattr(self.config, "geofl_R0",                     5),
+            "beta":            getattr(self.config, "geofl_beta",                   0.2),
+            "sampling_rate":   getattr(self.config, "geofl_client_sampling_rate",   0.7),
+            "batch_size":      getattr(self.config, "geofl_batch_size",             16),
+        })
+        return result
+
+    def _run_ifca(self, devices: Dict[str, Any], global_model: nn.Module,
+                  dataset: Any) -> Dict[str, Any]:
+        """IFCA: Iterative Federated Clustering Algorithm (NeurIPS 2020)."""
+        print("Running IFCA baseline...")
+        ifca = IFCA(self.config, devices, global_model, dataset)
+        result = ifca.run()
+        self.save_baseline_results(result, {
+            "num_rounds":    getattr(self.config, "ifca_num_rounds",    self.config.num_rounds),
+            "k":             getattr(self.config, "ifca_k",             4),
+            "local_steps":   getattr(self.config, "ifca_local_steps",   5),
+            "learning_rate": getattr(self.config, "ifca_lr",            0.01),
+            "lr_decay":      getattr(self.config, "ifca_lr_decay",      1.0),
+            "batch_size":    getattr(self.config, "ifca_batch_size",    32),
+            "sampling_rate": getattr(self.config, "ifca_sampling_rate", 0.7),
+            "variant":       getattr(self.config, "ifca_variant",       "model"),
+            "weight_sharing": getattr(self.config, "ifca_weight_sharing", False),
+        })
+        return result
+
+    def _run_snapcfl(self, devices: Dict[str, Any], global_model: nn.Module,
+                     dataset: Any) -> Dict[str, Any]:
+        """SnapCFL: Pre-Clustering-Based Clustered FL (IEEE TMC 2025)."""
+        print("Running SnapCFL baseline...")
+        snapcfl = SnapCFL(self.config, devices, global_model, dataset)
+        result  = snapcfl.run()
+        self.save_baseline_results(result, {
+            "num_rounds":         getattr(self.config, "snapcfl_num_rounds",          self.config.num_rounds),
+            "learning_rate":      getattr(self.config, "snapcfl_lr",                  0.01),
+            "batch_size":         getattr(self.config, "snapcfl_batch_size",          32),
+            "local_epochs":       getattr(self.config, "snapcfl_local_epochs",        5),
+            "sampling_rate":      getattr(self.config, "snapcfl_sampling_rate",       0.7),
+            "pre_cluster_rounds": getattr(self.config, "snapcfl_pre_cluster_rounds",  10),
+            "eps":                getattr(self.config, "snapcfl_eps",                 0.25),
+            "min_samples":        getattr(self.config, "snapcfl_min_samples",         2),
+            "intra_algo":         getattr(self.config, "snapcfl_intra_algo",          "fedavg"),
+            "global_averaging":   getattr(self.config, "snapcfl_global_averaging",    False),
+        })
+        return result
 
     def state_dict_to_vector(self, state_dict: dict) -> np.ndarray:
         vecs = []

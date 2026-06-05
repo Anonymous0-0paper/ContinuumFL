@@ -255,6 +255,104 @@ class ShakespeareLSTM(nn.Module):
         cloned_model.load_state_dict(self.state_dict())
         return cloned_model
 
+class UCIHAR_CNN_LSTM(nn.Module):
+    """1D-CNN feature extractor + LSTM classifier for UCI HAR time-series.
+    Input: (batch, 9, 128)  — 9 sensor channels, 128 timesteps.
+    """
+
+    def __init__(self, num_classes: int = 6, num_channels: int = 9, lstm_hidden: int = 128):
+        super().__init__()
+        self.num_classes = num_classes
+
+        self.cnn = nn.Sequential(
+            nn.Conv1d(num_channels, 64, kernel_size=5, padding=2),
+            nn.BatchNorm1d(64), nn.ReLU(),
+            nn.MaxPool1d(2),                                        # → (64, 64)
+
+            nn.Conv1d(64, 128, kernel_size=5, padding=2),
+            nn.BatchNorm1d(128), nn.ReLU(),
+            nn.MaxPool1d(2),                                        # → (128, 32)
+
+            nn.Conv1d(128, 128, kernel_size=3, padding=1),
+            nn.BatchNorm1d(128), nn.ReLU(),
+            nn.MaxPool1d(2),                                        # → (128, 16)
+        )
+
+        self.lstm = nn.LSTM(128, lstm_hidden, batch_first=True, num_layers=1)
+        self.dropout = nn.Dropout(0.3)
+        self.fc = nn.Linear(lstm_hidden, num_classes)
+        self._init_weights()
+
+    def _init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv1d):
+                nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
+            elif isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                nn.init.zeros_(m.bias)
+
+    def forward(self, x):
+        # x: (B, 9, 128)
+        x = self.cnn(x)                         # (B, 128, 16)
+        x = x.permute(0, 2, 1)                  # (B, 16, 128) — seq for LSTM
+        _, (h_n, _) = self.lstm(x)
+        x = self.dropout(h_n[-1])               # (B, lstm_hidden)
+        return self.fc(x)
+
+    def clone(self):
+        m = UCIHAR_CNN_LSTM(self.num_classes)
+        m.load_state_dict(self.state_dict())
+        return m
+
+
+class SpeechCommandsCNN(nn.Module):
+    """Lightweight 2D-CNN keyword spotter for log-mel spectrograms.
+    Input: (batch, 1, 64, 101)  — 1 channel, 64 mel bins, ~101 time frames.
+    """
+
+    def __init__(self, num_classes: int = 35):
+        super().__init__()
+        self.num_classes = num_classes
+
+        def _block(in_ch, out_ch, stride=1):
+            return nn.Sequential(
+                nn.Conv2d(in_ch, out_ch, 3, stride=stride, padding=1, bias=False),
+                nn.BatchNorm2d(out_ch), nn.ReLU(),
+            )
+
+        self.features = nn.Sequential(
+            _block(1, 32),
+            _block(32, 32, stride=2),    # → (32, 32, 51)
+            _block(32, 64),
+            _block(64, 64, stride=2),    # → (64, 16, 26)
+            _block(64, 128),
+            _block(128, 128, stride=2),  # → (128, 8, 13)
+            nn.AdaptiveAvgPool2d((1, 1)),
+        )
+        self.dropout = nn.Dropout(0.25)
+        self.fc = nn.Linear(128, num_classes)
+        self._init_weights()
+
+    def _init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
+            elif isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                nn.init.zeros_(m.bias)
+
+    def forward(self, x):
+        x = self.features(x)            # (B, 128, 1, 1)
+        x = torch.flatten(x, 1)         # (B, 128)
+        x = self.dropout(x)
+        return self.fc(x)
+
+    def clone(self):
+        m = SpeechCommandsCNN(self.num_classes)
+        m.load_state_dict(self.state_dict())
+        return m
+
+
 class ModelFactory:
     """Factory class to create models based on configuration"""
     
@@ -274,10 +372,22 @@ class ModelFactory:
             return ShakespeareLSTM(
                 vocab_size=79,
                 embedding_dim=model_config.get('embedding_dim', 64),
-                hidden_dim=model_config.get('hidden_dim', 256),
+                hidden_dim=model_config.get('hidden_dim', 128),
                 num_layers=model_config.get('num_layers', 3)
             )
-        
+
+        elif dataset_name == 'ucihar':
+            return UCIHAR_CNN_LSTM(
+                num_classes=model_config.get('num_classes', 6),
+                num_channels=model_config.get('num_channels', 9),
+                lstm_hidden=model_config.get('lstm_hidden', 128),
+            )
+
+        elif dataset_name == 'speechcommands':
+            return SpeechCommandsCNN(
+                num_classes=model_config.get('num_classes', 35),
+            )
+
         else:
             raise ValueError(f"Unsupported dataset: {dataset_name}")
     

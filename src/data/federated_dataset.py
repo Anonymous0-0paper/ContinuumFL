@@ -28,6 +28,12 @@ try:
 except ImportError:
     print("Warning: zipfile not available")
     zipfile = None
+try:
+    import librosa
+    LIBROSA_AVAILABLE = True
+except ImportError:
+    print("Warning: librosa not installed. Speech Commands mel-spectrogram will use scipy fallback.")
+    LIBROSA_AVAILABLE = False
 
 class FederatedDataset:
     """Base class for federated datasets with spatial non-IID distribution"""
@@ -66,6 +72,10 @@ class FederatedDataset:
             self._prepare_femnist()
         elif self.dataset_name.lower() == 'shakespeare':
             self._prepare_shakespeare()
+        elif self.dataset_name.lower() == 'ucihar':
+            self._prepare_ucihar()
+        elif self.dataset_name.lower() == 'speechcommands':
+            self._prepare_speechcommands()
         else:
             raise ValueError(f"Unsupported dataset: {self.dataset_name}")
 
@@ -287,6 +297,31 @@ class FederatedDataset:
             with open(os.path.join(shakespeare_path, 'test.pkl'), 'rb') as f:
                 test_data = pickle.load(f)
                 self.test_data = self.ShakespeareDataset(test_data, vocab)
+            # Enforce max_samples if requested (trim loaded datasets and index lists)
+            if self.max_samples > 0:
+                # Trim train indices and dataset
+                if len(self.train_indices) > self.max_samples:
+                    keep_train = self.train_indices[:self.max_samples]
+                    self.train_indices = keep_train
+                    try:
+                        trimmed_train = train_dataset.select(range(min(len(train_dataset), self.max_samples)))
+                        self.train_data = self.ShakespeareDataset(trimmed_train, vocab)
+                    except Exception:
+                        # If the loaded train_dataset is not a HF dataset with select(), fall back to slicing
+                        if hasattr(train_dataset, '__getitem__'):
+                            trimmed_items = [train_dataset[i] for i in range(min(len(train_dataset), self.max_samples))]
+                            self.train_data = self.ShakespeareDataset({'x': [it[0] for it in trimmed_items], 'y': [it[1] for it in trimmed_items]}, vocab)
+                # Trim test indices and dataset
+                if len(self.test_indices) > self.max_samples:
+                    keep_test = self.test_indices[:self.max_samples]
+                    self.test_indices = keep_test
+                    try:
+                        trimmed_test = test_data.select(range(min(len(test_data), self.max_samples)))
+                        self.test_data = self.ShakespeareDataset(trimmed_test, vocab)
+                    except Exception:
+                        if hasattr(test_data, '__getitem__'):
+                            trimmed_items = [test_data[i] for i in range(min(len(test_data), self.max_samples))]
+                            self.test_data = self.ShakespeareDataset({'x': [it[0] for it in trimmed_items], 'y': [it[1] for it in trimmed_items]}, vocab)
             return
 
         # Download and process Shakespeare dataset
@@ -334,6 +369,15 @@ class FederatedDataset:
         train_dataset = dataset.select(self.train_indices)
         test_dataset = dataset.select(self.test_indices)
 
+        # Apply max_samples limit if requested (consistent with other dataset handlers)
+        if self.max_samples > 0:
+            num_train_samples = min(len(train_dataset), self.max_samples)
+            num_test_samples = min(len(test_dataset), self.max_samples)
+            if num_train_samples < len(train_dataset):
+                train_dataset = train_dataset.select(range(num_train_samples))
+            if num_test_samples < len(test_dataset):
+                test_dataset = test_dataset.select(range(num_test_samples))
+
         # Save raw train/test texts
         with open(os.path.join(shakespeare_path, 'vocab.pkl'), 'wb') as f:
             pickle.dump(vocab, f)
@@ -351,6 +395,280 @@ class FederatedDataset:
 
         print(f"Shakespeare processed: {len(self.train_data)} train, {len(self.test_data)} test samples")
     
+    def _prepare_ucihar(self):
+        """Prepare UCI Human Activity Recognition dataset (raw inertial signals)."""
+        print("Preparing UCI HAR dataset...")
+        har_path = os.path.join(self.data_dir, 'ucihar')
+        os.makedirs(har_path, exist_ok=True)
+
+        cache_file = os.path.join(har_path, 'data.pkl')
+        if os.path.exists(cache_file):
+            print("Loading cached UCI HAR data...")
+            with open(cache_file, 'rb') as f:
+                data = pickle.load(f)
+            self._build_ucihar_datasets(data)
+            return
+
+        zip_path = os.path.join(har_path, 'UCI_HAR.zip')
+        if not os.path.exists(zip_path):
+            url = "https://archive.ics.uci.edu/ml/machine-learning-databases/00240/UCI%20HAR%20Dataset.zip"
+            print(f"Downloading UCI HAR from {url} ...")
+            if requests is None:
+                raise RuntimeError("requests package required to download UCI HAR.")
+            r = requests.get(url, stream=True)
+            r.raise_for_status()
+            with open(zip_path, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+
+        extract_dir = os.path.join(har_path, 'extracted')
+        if not os.path.exists(extract_dir):
+            print("Extracting UCI HAR zip...")
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                zf.extractall(extract_dir)
+
+        root = os.path.join(extract_dir, 'UCI HAR Dataset')
+
+        signal_names = [
+            'body_acc_x', 'body_acc_y', 'body_acc_z',
+            'body_gyro_x', 'body_gyro_y', 'body_gyro_z',
+            'total_acc_x', 'total_acc_y', 'total_acc_z',
+        ]
+
+        def load_signals(split):
+            arrays = []
+            for name in signal_names:
+                fpath = os.path.join(root, split, 'Inertial Signals', f'{name}_{split}.txt')
+                arrays.append(np.loadtxt(fpath))
+            # shape: (n_samples, 9, 128)
+            return np.stack(arrays, axis=1).astype(np.float32)
+
+        def load_labels(split):
+            fpath = os.path.join(root, split, f'y_{split}.txt')
+            return np.loadtxt(fpath, dtype=np.int64) - 1  # 0-indexed
+
+        def load_subjects(split):
+            fpath = os.path.join(root, split, f'subject_{split}.txt')
+            return np.loadtxt(fpath, dtype=np.int64)
+
+        print("Loading UCI HAR signals (this may take a moment)...")
+        data = {
+            'X_train': load_signals('train'),
+            'y_train': load_labels('train'),
+            'subjects_train': load_subjects('train'),
+            'X_test': load_signals('test'),
+            'y_test': load_labels('test'),
+            'subjects_test': load_subjects('test'),
+        }
+
+        with open(cache_file, 'wb') as f:
+            pickle.dump(data, f)
+
+        self._build_ucihar_datasets(data)
+
+    def _build_ucihar_datasets(self, data):
+        """Build PyTorch datasets from UCI HAR numpy arrays."""
+
+        class UCIHARDataset(Dataset):
+            def __init__(self, X, y, subjects):
+                # Normalize each channel to zero-mean unit-variance
+                mean = X.mean(axis=(0, 2), keepdims=True)
+                std = X.std(axis=(0, 2), keepdims=True) + 1e-8
+                X = (X - mean) / std
+                self.X = torch.from_numpy(X)
+                self.targets = y.tolist()
+                self.subjects = subjects
+
+            def __len__(self):
+                return len(self.targets)
+
+            def __getitem__(self, idx):
+                return self.X[idx], self.targets[idx]
+
+        X_tr, y_tr = data['X_train'], data['y_train']
+        X_te, y_te = data['X_test'], data['y_test']
+
+        if self.max_samples > 0:
+            X_tr = X_tr[:self.max_samples]
+            y_tr = y_tr[:self.max_samples]
+            X_te = X_te[:self.max_samples]
+            y_te = y_te[:self.max_samples]
+
+        self.train_data = UCIHARDataset(X_tr, y_tr, data['subjects_train'][:len(y_tr)])
+        self.test_data = UCIHARDataset(X_te, y_te, data['subjects_test'][:len(y_te)])
+        print(f"UCI HAR loaded: {len(self.train_data)} train, {len(self.test_data)} test samples, 6 classes")
+
+    def _prepare_speechcommands(self):
+        """Prepare Google Speech Commands v2 dataset as log-mel spectrograms.
+
+        Uses HuggingFace datasets + librosa — no torchaudio dependency.
+        Spectrograms are pre-computed and cached to avoid re-processing on reload.
+        """
+        print("Preparing Google Speech Commands v2 dataset...")
+        sc_path = os.path.join(self.data_dir, 'speechcommands')
+        os.makedirs(sc_path, exist_ok=True)
+
+        # All 35 keywords present in Speech Commands v2
+        KEYWORDS = [
+            'backward', 'bed', 'bird', 'cat', 'dog', 'down', 'eight', 'five',
+            'follow', 'forward', 'four', 'go', 'happy', 'house', 'learn', 'left',
+            'marvin', 'nine', 'no', 'off', 'on', 'one', 'right', 'seven', 'sheila',
+            'six', 'stop', 'three', 'tree', 'two', 'up', 'visual', 'wow', 'yes', 'zero',
+        ]
+        label_map = {kw: i for i, kw in enumerate(KEYWORDS)}
+
+        def _wav_to_melspec(audio_array, sr=16000, n_mels=64, n_fft=400, hop_length=160):
+            """Convert raw waveform (numpy float32, 16 kHz) to log-mel spectrogram tensor."""
+            # Ensure float32 and correct sample rate
+            wav = audio_array.astype(np.float32)
+            if LIBROSA_AVAILABLE:
+                mel = librosa.feature.melspectrogram(
+                    y=wav, sr=sr, n_fft=n_fft, hop_length=hop_length,
+                    n_mels=n_mels, fmin=20.0, fmax=8000.0,
+                )
+                log_mel = librosa.power_to_db(mel, ref=np.max, top_db=80.0)
+            else:
+                # Minimal numpy/scipy fallback
+                from scipy.signal import spectrogram as sp_spectrogram
+                from scipy.signal.windows import hann
+                freqs, times, Sxx = sp_spectrogram(
+                    wav, fs=sr, window=hann(n_fft), nperseg=n_fft,
+                    noverlap=n_fft - hop_length, scaling='spectrum',
+                )
+                # Build triangular mel filter bank manually
+                f_min, f_max = 20.0, 8000.0
+                mel_min = 2595 * np.log10(1 + f_min / 700)
+                mel_max = 2595 * np.log10(1 + f_max / 700)
+                mel_points = np.linspace(mel_min, mel_max, n_mels + 2)
+                hz_points = 700 * (10 ** (mel_points / 2595) - 1)
+                bin_points = np.floor((n_fft + 1) * hz_points / sr).astype(int)
+                fbank = np.zeros((n_mels, n_fft // 2 + 1))
+                for m in range(1, n_mels + 1):
+                    f_m_minus, f_m, f_m_plus = bin_points[m-1], bin_points[m], bin_points[m+1]
+                    for k in range(f_m_minus, f_m):
+                        fbank[m-1, k] = (k - f_m_minus) / max(f_m - f_m_minus, 1)
+                    for k in range(f_m, f_m_plus):
+                        fbank[m-1, k] = (f_m_plus - k) / max(f_m_plus - f_m, 1)
+                mel = np.dot(fbank, Sxx)
+                log_mel = 10 * np.log10(mel + 1e-10)
+            # Fixed time-axis length: pad/trim to 101 frames
+            target_frames = 101
+            if log_mel.shape[1] < target_frames:
+                log_mel = np.pad(log_mel, ((0, 0), (0, target_frames - log_mel.shape[1])))
+            else:
+                log_mel = log_mel[:, :target_frames]
+            # Per-sample normalisation
+            log_mel = (log_mel - log_mel.mean()) / (log_mel.std() + 1e-8)
+            return torch.tensor(log_mel, dtype=torch.float32).unsqueeze(0)  # (1, 64, 101)
+
+        def _ensure_extracted(sc_path):
+            """Download and extract Speech Commands v0.02 tarball if not already done."""
+            import tarfile
+            extract_dir = os.path.join(sc_path, 'speech_commands_v0.02')
+            if os.path.isdir(extract_dir):
+                return extract_dir
+            tar_path = os.path.join(sc_path, 'speech_commands_v0.02.tar.gz')
+            if not os.path.exists(tar_path):
+                url = "http://download.tensorflow.org/data/speech_commands_v0.02.tar.gz"
+                print(f"  Downloading Speech Commands v0.02 (~2.3 GB) from {url} ...")
+                if requests is None:
+                    raise RuntimeError("requests package required to download Speech Commands.")
+                r = requests.get(url, stream=True)
+                r.raise_for_status()
+                with open(tar_path, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=65536):
+                        f.write(chunk)
+            print("  Extracting Speech Commands tarball...")
+            os.makedirs(extract_dir, exist_ok=True)
+            with tarfile.open(tar_path, 'r:gz') as tf:
+                tf.extractall(extract_dir)
+            return extract_dir
+
+        def _build_split(split_name, cache_pkl, max_s, extract_dir):
+            """Build spectrogram dataset for one split (train / validation / test)."""
+            if os.path.exists(cache_pkl):
+                print(f"  Loading cached '{split_name}' spectrograms...")
+                with open(cache_pkl, 'rb') as f:
+                    return pickle.load(f)
+
+            print(f"  Building '{split_name}' split from WAV files...")
+            # Read official split lists
+            val_list_path  = os.path.join(extract_dir, 'validation_list.txt')
+            test_list_path = os.path.join(extract_dir, 'testing_list.txt')
+            with open(val_list_path)  as fh: val_files  = set(line.strip() for line in fh)
+            with open(test_list_path) as fh: test_files = set(line.strip() for line in fh)
+
+            specs, labels, speakers = [], [], []
+            for word in sorted(label_map.keys()):
+                word_dir = os.path.join(extract_dir, word)
+                if not os.path.isdir(word_dir):
+                    continue
+                for fname in sorted(os.listdir(word_dir)):
+                    if not fname.endswith('.wav'):
+                        continue
+                    rel_path = f'{word}/{fname}'
+                    # Assign to correct split
+                    if split_name == 'validation' and rel_path not in val_files:
+                        continue
+                    if split_name == 'test' and rel_path not in test_files:
+                        continue
+                    if split_name == 'train' and (rel_path in val_files or rel_path in test_files):
+                        continue
+
+                    wav_path = os.path.join(extract_dir, rel_path)
+                    if LIBROSA_AVAILABLE:
+                        wav, sr = librosa.load(wav_path, sr=16000, mono=True)
+                    else:
+                        import scipy.io.wavfile as wav_io
+                        sr, wav = wav_io.read(wav_path)
+                        wav = wav.astype(np.float32) / 32768.0
+
+                    target_len = 16000
+                    if len(wav) < target_len:
+                        wav = np.pad(wav, (0, target_len - len(wav)))
+                    else:
+                        wav = wav[:target_len]
+
+                    specs.append(_wav_to_melspec(wav))
+                    labels.append(label_map[word])
+                    # Speaker ID is the hash part of the filename: hash_nonce.wav
+                    speakers.append(fname.split('_')[0])
+
+                    if max_s > 0 and len(specs) >= max_s:
+                        break
+                if max_s > 0 and len(specs) >= max_s:
+                    break
+
+            result = {'specs': specs, 'labels': labels, 'speakers': speakers}
+            with open(cache_pkl, 'wb') as f:
+                pickle.dump(result, f)
+            return result
+
+        class SpeechCommandsDataset(Dataset):
+            def __init__(self, data_dict):
+                self.specs = data_dict['specs']       # list of (1,64,101) tensors
+                self.targets = data_dict['labels']    # list of ints
+                self.speakers = data_dict['speakers']
+
+            def __len__(self):
+                return len(self.targets)
+
+            def __getitem__(self, idx):
+                return self.specs[idx], self.targets[idx]
+
+        max_s = self.max_samples if self.max_samples > 0 else -1
+        extract_dir = _ensure_extracted(sc_path)
+        tag = "full" if max_s < 0 else max_s
+        train_cache = os.path.join(sc_path, f'train_specs_{tag}.pkl')
+        test_cache  = os.path.join(sc_path, f'val_specs_{tag}.pkl')
+
+        train_data = _build_split('train',      train_cache, max_s, extract_dir)
+        test_data  = _build_split('validation', test_cache,  max_s, extract_dir)
+
+        self.train_data = SpeechCommandsDataset(train_data)
+        self.test_data  = SpeechCommandsDataset(test_data)
+        print(f"Speech Commands loaded: {len(self.train_data)} train, {len(self.test_data)} test, 35 classes")
+
     def distribute_data_to_devices(self, zones: Dict[str, List[str]]) -> Dict[str, Tuple[Subset, Subset]]:
         """
         Distribute data to devices with spatial non-IID characteristics.
@@ -372,6 +690,10 @@ class FederatedDataset:
         elif self.dataset_name.lower() == 'shakespeare':
             num_classes = self.train_data.num_classes
             print(f"Shakespeare has {num_classes} classes.")
+        elif self.dataset_name.lower() == 'ucihar':
+            num_classes = 6
+        elif self.dataset_name.lower() == 'speechcommands':
+            num_classes = 35
         else:
             num_classes = 10  # Default
         self.num_classes = num_classes
