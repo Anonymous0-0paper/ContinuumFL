@@ -27,7 +27,7 @@ DATASET="${DATASET:-ucihar}"
 # ┌─────────────────────────────────────────────────────────────────────────────
 # │ BASELINE METHODS
 # └─────────────────────────────────────────────────────────────────────────────
-BASELINE_METHODS=(FedAvg FedProx HierFL ClusterFL IFCA APCfl GeoFL SnapCFL)
+BASELINE_METHODS=(APCfl GeoFL SnapCFL)
 
 # ┌─────────────────────────────────────────────────────────────────────────────
 # │ FIXED PARAMETERS (shared across all runs)
@@ -168,6 +168,7 @@ run_baselines() {
         --run_baselines
         --baseline_methods     "${BASELINE_METHODS[@]}"
         --save_results
+        --ifca_k               "$num_zones"
     )
 
     if [[ "$enable_failure" == "true" ]]; then

@@ -144,7 +144,7 @@ class APCFL:
             "round_times":    round_times,
             "cluster_counts": cluster_counts,
             "total_time":     time.time() - t_start,
-            "convergence_round": self._find_convergence(accuracies),
+            "convergence_round": _find_convergence(accuracies),
         }
 
     def train_round(self, t: int) -> Tuple[float, float, int]:

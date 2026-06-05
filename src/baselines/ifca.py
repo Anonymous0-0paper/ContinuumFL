@@ -330,48 +330,61 @@ class IFCA:
             self.cluster_models[j] = new_sd
 
     def evaluate(self) -> Tuple[float, float, float, float, float]:
-        """Evaluate by averaging metrics across all k cluster models.
+        """Evaluate by assigning each sample to its best cluster (argmin loss).
         Returns (accuracy, loss, precision, recall, f1)."""
-        total_acc = total_loss = total_prec = total_rec = total_f1 = 0.0
-        criterion = nn.CrossEntropyLoss()
+        criterion = nn.CrossEntropyLoss(reduction="none")
 
+        models = []
         for sd in self.cluster_models:
-            model = copy.deepcopy(self._template_model)
-            model.load_state_dict(sd)
-            model = model.to(self._dev)
-            model.eval()
-            all_preds: List[torch.Tensor] = []
-            all_targets_l: List[torch.Tensor] = []
-            num_classes = 2
+            m = copy.deepcopy(self._template_model)
+            m.load_state_dict(sd)
+            m = m.to(self._dev)
+            m.eval()
+            models.append(m)
 
-            try:
-                loader = self.dataset.get_global_dataloader(batch_size=64, is_train=False)
-                correct, total, loss_sum = 0, 0, 0.0
-                with torch.no_grad():
-                    for data, target in loader:
-                        data, target = data.to(self._dev), target.to(self._dev)
-                        out = model(data)
+        all_preds: List[torch.Tensor] = []
+        all_targets_l: List[torch.Tensor] = []
+        total_loss_sum = 0.0
+        total_samples = 0
+        num_classes = 2
+
+        try:
+            loader = self.dataset.get_global_dataloader(batch_size=64, is_train=False)
+            with torch.no_grad():
+                for data, target in loader:
+                    data, target = data.to(self._dev), target.to(self._dev)
+                    # per-sample loss for each cluster model: shape [k, B]
+                    per_cluster_loss = []
+                    outs = []
+                    for m in models:
+                        out = m(data)
                         if isinstance(out, tuple):
                             out = out[0]
                         num_classes = out.shape[1]
-                        loss_sum += criterion(out, target).item()
-                        pred = out.argmax(1)
-                        correct += pred.eq(target).sum().item()
-                        total   += target.size(0)
-                        all_preds.append(pred.cpu())
-                        all_targets_l.append(target.cpu())
-                total_acc  += correct / max(total, 1)
-                total_loss += loss_sum / max(len(loader), 1)
-                preds_t   = torch.cat(all_preds)
-                targets_t = torch.cat(all_targets_l)
-                p, r, f = _compute_prf(preds_t, targets_t, num_classes)
-                total_prec += p; total_rec += r; total_f1 += f
-            except Exception as e:
-                print(f"  IFCA evaluate error: {e}")
+                        per_cluster_loss.append(criterion(out, target))
+                        outs.append(out)
+                    # best cluster per sample: [B]
+                    stacked_loss = torch.stack(per_cluster_loss, dim=0)  # [k, B]
+                    best_k = stacked_loss.argmin(dim=0)                  # [B]
+                    stacked_out = torch.stack(outs, dim=0)               # [k, B, C]
+                    # gather predictions from the best cluster for each sample
+                    idx = best_k.view(1, -1, 1).expand(1, -1, num_classes)
+                    best_out = stacked_out.gather(0, idx).squeeze(0)     # [B, C]
+                    pred = best_out.argmax(1)
+                    all_preds.append(pred.cpu())
+                    all_targets_l.append(target.cpu())
+                    total_loss_sum += stacked_loss.gather(0, best_k.unsqueeze(0)).sum().item()
+                    total_samples  += target.size(0)
 
-        n = max(len(self.cluster_models), 1)
-        return (total_acc / n, total_loss / n,
-                total_prec / n, total_rec / n, total_f1 / n)
+            preds_t   = torch.cat(all_preds)
+            targets_t = torch.cat(all_targets_l)
+            acc = preds_t.eq(targets_t).float().mean().item()
+            avg_loss = total_loss_sum / max(total_samples, 1)
+            p, r, f = _compute_prf(preds_t, targets_t, num_classes)
+            return acc, avg_loss, p, r, f
+        except Exception as e:
+            print(f"  IFCA evaluate error: {e}")
+            return 0.0, 0.0, 0.0, 0.0, 0.0
 
     # ------------------------------------------------------------------
     # Internal helpers
