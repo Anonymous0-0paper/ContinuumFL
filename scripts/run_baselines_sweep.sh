@@ -22,7 +22,7 @@ set -euo pipefail
 # │ DATASET — one line to change:
 # │   ucihar | femnist | cifar100 | shakespeare | speechcommands
 # └─────────────────────────────────────────────────────────────────────────────
-DATASET="${DATASET:-ucihar}"
+DATASET="${DATASET:-speechcommands}"
 
 # ┌─────────────────────────────────────────────────────────────────────────────
 # │ BASELINE METHODS

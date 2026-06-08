@@ -3,34 +3,42 @@
 #  ContinuumFL — Baselines-only on UCI-HAR
 #  Adapted for: VSC-5 (vsc5.vsc.ac.at) | Project p73209 | User abolfazlyoun
 #
-#  Submit:   sbatch scripts/run_baselines_ucihar_vsc5.sh
-#  Dry-run:  DRY_RUN=true bash scripts/run_baselines_ucihar_vsc5.sh
+#  ── ONE-TIME SETUP (run once on login node before first sbatch) ─────────────
+#    module purge
+#    module load cuda/12.3
+#    module load python/3.11.3-gcc-12.2.0-hn7p65z
+#    python -m venv --upgrade-deps $HOME/cfl_venv
+#    source $HOME/cfl_venv/bin/activate
+#    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+#    pip install -r requirements.txt
+#    deactivate
+#
+#  Submit:   sbatch scripts/runBS.sh
+#  Dry-run:  DRY_RUN=true bash scripts/runBS.sh
 #
 #  To change dataset: set DATASET below to one of:
 #    ucihar | femnist | cifar100 | shakespeare | speechcommands
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # ── SLURM directives ───────────────────────────────────────────────────────────
+#
+#  zen3_0512_a100x2 partition rules (enforced by VSC-5):
+#    Half-node (1 GPU): NO --nodes, NO --mem  → 64 cores, 256 GB RAM auto-assigned
+#    Full-node (2 GPU): -N <n> + --gres=gpu:2, NO --mem
+#
 #SBATCH --job-name=CFL_baselines_ucihar
-#SBATCH --account=p73209                      # VSC-5 project account
-#SBATCH --partition=zen3_0512_a100x2          # NVIDIA A100 partition on VSC-5
-#SBATCH --qos=zen3_0512_a100x2               # Must match partition on VSC-5
-#SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=48G
-#SBATCH --gres=gpu:1                          # Single A100 (40 GB VRAM)
-#SBATCH --time=23:00:00                       # Max 3 days on VSC-5
+#SBATCH --partition=zen2_0256_a40x2
+#SBATCH --qos=zen2_0256_a40x2
+#SBATCH --mem=128
+#SBATCH --gres=gpu:1
 #SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=Abolfazl.Younesi@uibk.ac.at
-#SBATCH --output=logs/slurm.%x.%j.out
-#SBATCH --error=logs/slurm.%x.%j.err
-
+#SBATCH --mail-user=abolfazl.younesi@uibk.ac.at
+#SBATCH --output=slurmlogs/logs/slurm.%x.%j.out
+#SBATCH --error=slurmlogs/logs/slurm.%x.%j.err
 set -euo pipefail
 
 # ┌─────────────────────────────────────────────────────────────────────────────
-# │ DATASET — change this one line to switch datasets:
-# │   ucihar | femnist | cifar100 | shakespeare | speechcommands
+# │ DATASET
 # └─────────────────────────────────────────────────────────────────────────────
 DATASET="ucihar"
 
@@ -57,14 +65,11 @@ CORRELATION_THRESHOLD=0.05
 RANDOM_SEED=42
 DEVICE="cuda"
 
-# ── Baseline methods to run ────────────────────────────────────────────────────
-# Remove or add methods as needed:
-#   FedAvg | FedProx | HierFL | ClusterFL | IFCA | APCfl | GeoFL | SnapCFL
+# ── Baseline methods ──────────────────────────────────────────────────────────
 BASELINE_METHODS=(FedAvg FedProx HierFL ClusterFL IFCA APCfl GeoFL SnapCFL)
 
 # ┌─────────────────────────────────────────────────────────────────────────────
-# │ FAULT SCENARIOS
-# │   Format: "DEVICE_FAIL:ZONE_FAIL:LABEL"
+# │ FAULT SCENARIOS  "DEVICE_FAIL:ZONE_FAIL:LABEL"
 # └─────────────────────────────────────────────────────────────────────────────
 FAULT_CONFIGS=(
     "0.00:0.00:fault_free"
@@ -78,7 +83,7 @@ FAULT_CONFIGS=(
 )
 
 # ┌─────────────────────────────────────────────────────────────────────────────
-# │ PATHS  (VSC-5: run from $DATA, not $HOME)
+# │ PATHS
 # └─────────────────────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
@@ -89,62 +94,37 @@ CHECKPOINT_ROOT="$PROJECT_ROOT/checkpoints/$RUN_NAME"
 mkdir -p "$RESULTS_ROOT" "$LOG_ROOT" "$CHECKPOINT_ROOT"
 
 # ┌─────────────────────────────────────────────────────────────────────────────
-# │ VSC-5 ENVIRONMENT SETUP
-# │ VSC-5 uses AlmaLinux + module system — load CUDA before anything else
+# │ VSC-5 ENVIRONMENT
+# │ Load modules then activate the pre-built venv (see ONE-TIME SETUP above).
+# │ Do NOT pip install inside this script — that wastes compute time.
 # └─────────────────────────────────────────────────────────────────────────────
-
-# Clean the module environment
 module purge
-
-# Load CUDA 12.3 (available on VSC-5 A100 nodes)
 module load cuda/12.3
+module load python/3.11.3-gcc-12.2.0-hn7p65z
 
-# Print GPU info for the log
-echo "====== Node: $(hostname) ======"
-echo "====== CUDA module loaded ======"
-nvidia-smi
-echo "==============================="
-
-# ── Python / venv setup ───────────────────────────────────────────────────────
-PYTHON_BIN="${PYTHON_BIN:-python3}"
-if ! command -v "$PYTHON_BIN" &>/dev/null; then
-    echo "❌ python3 not found — load a python module or set PYTHON_BIN."
+VENV_DIR="$HOME/cfl_venv"
+if [ ! -d "$VENV_DIR" ]; then
+    echo "❌ Virtual environment not found at $VENV_DIR"
+    echo "   Run the ONE-TIME SETUP steps in this script's header, then resubmit."
     exit 1
 fi
-
-VENV_DIR="$PROJECT_ROOT/.venv"
-if [ ! -d "$VENV_DIR" ]; then
-    echo "Creating virtual environment at $VENV_DIR ..."
-    "$PYTHON_BIN" -m venv "$VENV_DIR" --upgrade-deps
-fi
 source "$VENV_DIR/bin/activate"
-PYTHON_BIN="$VENV_DIR/bin/python"
-"$PYTHON_BIN" -m pip install --upgrade pip 2>&1 | tail -3
 
-# ── Install PyTorch for CUDA 12.3 (A100 on VSC-5) ────────────────────────────
-# VSC-5 A100 nodes have CUDA 12.3 — use cu121 wheel (closest stable match)
-"$PYTHON_BIN" -m pip install \
-    torch torchvision torchaudio \
-    --index-url https://download.pytorch.org/whl/cu121 2>&1 | tail -5
+# ── Info dump for the log ─────────────────────────────────────────────────────
+echo "====== Node     : $(hostname) ======"
+echo "====== Python   : $(which python) — $(python --version) ======"
+nvidia-smi
+echo "============================================"
 
-# ── Install remaining requirements (skip torch lines to avoid conflicts) ───────
-if [ -f "$PROJECT_ROOT/requirements.txt" ]; then
-    grep -v "^torch\|^#.*torch\|cuda\|rocm" "$PROJECT_ROOT/requirements.txt" \
-        | "$PYTHON_BIN" -m pip install -r /dev/stdin 2>&1 || true
-fi
-
-# ┌─────────────────────────────────────────────────────────────────────────────
-# │ SANITY CHECK — confirm GPU is visible to PyTorch
-# └─────────────────────────────────────────────────────────────────────────────
-"$PYTHON_BIN" - <<'EOF'
+# ── Sanity: confirm PyTorch sees the GPU ─────────────────────────────────────
+python - <<'EOF'
 import torch, sys
 if not torch.cuda.is_available():
-    print("❌ CUDA not available to PyTorch — check module and driver.")
+    print("❌ CUDA not available to PyTorch — check module + venv setup.")
     sys.exit(1)
-n = torch.cuda.device_count()
-for i in range(n):
-    print(f"✅ GPU {i}: {torch.cuda.get_device_name(i)} | "
-          f"VRAM: {torch.cuda.get_device_properties(i).total_memory / 1e9:.1f} GB")
+for i in range(torch.cuda.device_count()):
+    p = torch.cuda.get_device_properties(i)
+    print(f"✅ GPU {i}: {p.name} | VRAM: {p.total_memory / 1e9:.1f} GB")
 EOF
 
 # ┌─────────────────────────────────────────────────────────────────────────────
@@ -178,7 +158,7 @@ for cfg in "${FAULT_CONFIGS[@]}"; do
     echo "  → $RESULTS_DIR"
 
     CMD=(
-        "$PYTHON_BIN" "$PROJECT_ROOT/main.py"
+        python "$PROJECT_ROOT/main.py"
         --dataset          "$DATASET"
         --max_samples      "$MAX_SAMPLES"
         --num_devices      "$NUM_DEVICES"
@@ -224,7 +204,6 @@ for cfg in "${FAULT_CONFIGS[@]}"; do
         continue
     fi
 
-    # Use srun inside SLURM, direct call otherwise
     if [[ -n "${SLURM_JOB_ID:-}" ]]; then
         srun "${CMD[@]}" 2>&1 | tee "$RESULTS_DIR/run.log"
     else

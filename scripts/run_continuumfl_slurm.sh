@@ -22,7 +22,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8             # reduce to 4 for quick/small runs
-#SBATCH --mem=48G                     # 16G for quick, 48G for standard, 96G for large
+#SBATCH --mem=24G                     # 16G for quick, 48G for standard, 96G for large
 #SBATCH --gres=gpu:1                  # increase to gpu:2 or gpu:8 on IFIgpuL40S
 #SBATCH --time=02-00:00:00            # quick=00:30:00 | standard=02:00:00 | large=12:00:00
 #SBATCH --mail-type=BEGIN,END,FAIL
