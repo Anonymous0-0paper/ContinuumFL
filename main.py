@@ -42,7 +42,9 @@ def parse_arguments():
                         help='Maximum number of devices within a zone')
     parser.add_argument('--num_rounds', type=int, default=200,
                        help='Number of training rounds')
-    
+    parser.add_argument('--eval_every', type=int, default=1,
+                       help='Evaluate model every N rounds (default: 1, set higher to speed up baselines)')
+
     # Training parameters
     parser.add_argument('--local_epochs', type=int, default=5,
                        help='Number of local training epochs')

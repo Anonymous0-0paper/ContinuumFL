@@ -22,7 +22,7 @@ set -euo pipefail
 # │ DATASET — one line to change:
 # │   ucihar | femnist | cifar100 | shakespeare | speechcommands
 # └─────────────────────────────────────────────────────────────────────────────
-DATASET="${DATASET:-speechcommands}"
+DATASET="${DATASET:-femnist}"
 
 # ┌─────────────────────────────────────────────────────────────────────────────
 # │ BASELINE METHODS
@@ -32,10 +32,11 @@ BASELINE_METHODS=(FedAvg FedProx HierFL ClusterFL IFCA APCfl GeoFL SnapCFL)
 # ┌─────────────────────────────────────────────────────────────────────────────
 # │ FIXED PARAMETERS (shared across all runs)
 # └─────────────────────────────────────────────────────────────────────────────
-NUM_ROUNDS=200
-LOCAL_EPOCHS=5
+NUM_ROUNDS="${NUM_ROUNDS:-200}"
+LOCAL_EPOCHS="${LOCAL_EPOCHS:-5}"
+EVAL_EVERY="${EVAL_EVERY:-5}"
 LEARNING_RATE=0.001
-BATCH_SIZE=64
+BATCH_SIZE=32
 INTRA_ZONE_ALPHA=100
 INTER_ZONE_ALPHA=5.0
 COMPRESSION_RATE=0.10
@@ -46,7 +47,7 @@ SPATIAL_REGULARIZATION=0.05
 CORRELATION_THRESHOLD=0.05
 RANDOM_SEED=42
 DEVICE="cuda"
-MAX_SAMPLES=-1
+MAX_SAMPLES=50000
 
 # ┌─────────────────────────────────────────────────────────────────────────────
 # │ ZONE CONFIGS
@@ -149,6 +150,7 @@ run_baselines() {
         --max_zone_size        "$max_zone"
         --num_rounds           "$NUM_ROUNDS"
         --local_epochs         "$LOCAL_EPOCHS"
+        --eval_every           "$EVAL_EVERY"
         --learning_rate        "$LEARNING_RATE"
         --batch_size           "$BATCH_SIZE"
         --intra_zone_alpha     "$INTRA_ZONE_ALPHA"

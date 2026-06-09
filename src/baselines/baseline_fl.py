@@ -29,6 +29,13 @@ class BaselineFLMethods:
     def __init__(self, config):
         self.config = config
         self.baseline_results = {}
+        self.eval_every = getattr(config, "eval_every", 1)
+
+    def _maybe_evaluate(self, model, dataset, round_num, last_metrics):
+        """Evaluate only every eval_every rounds; return cached metrics otherwise."""
+        if (round_num % self.eval_every) == 0:
+            return self._evaluate_model(model, dataset)
+        return last_metrics
 
     # ------------------------------------------------------------------
     # CSV persistence helpers
@@ -221,6 +228,7 @@ class BaselineFLMethods:
         round_times: List[float] = []
         participating_counts: List[int] = []
         start_time = time.time()
+        last_m: Dict[str, float] = {"accuracy": 0.0, "loss": float("inf"), "precision": 0.0, "recall": 0.0, "f1": 0.0}
 
         try:
             for round_num in range(self.config.num_rounds):
@@ -250,7 +258,8 @@ class BaselineFLMethods:
                     global_weights = self._fedavg_aggregate(device_updates, device_weights)
                     global_model.load_state_dict(global_weights)
 
-                m = self._evaluate_model(global_model, dataset)
+                m = self._maybe_evaluate(global_model, dataset, round_num, last_m)
+                last_m = m
                 accuracies.append(m["accuracy"])
                 losses.append(m["loss"])
                 precisions.append(m["precision"])
@@ -306,6 +315,7 @@ class BaselineFLMethods:
         round_times: List[float] = []
         participating_counts: List[int] = []
         start_time = time.time()
+        last_m: Dict[str, float] = {"accuracy": 0.0, "loss": float("inf"), "precision": 0.0, "recall": 0.0, "f1": 0.0}
 
         try:
             for round_num in range(self.config.num_rounds):
@@ -335,7 +345,8 @@ class BaselineFLMethods:
                     global_weights = self._fedavg_aggregate(device_updates, device_weights)
                     global_model.load_state_dict(global_weights)
 
-                m = self._evaluate_model(global_model, dataset)
+                m = self._maybe_evaluate(global_model, dataset, round_num, last_m)
+                last_m = m
                 accuracies.append(m["accuracy"])
                 losses.append(m["loss"])
                 precisions.append(m["precision"])
@@ -402,6 +413,7 @@ class BaselineFLMethods:
         round_times: List[float] = []
         participating_counts: List[int] = []
         start_time = time.time()
+        last_m: Dict[str, float] = {"accuracy": 0.0, "loss": float("inf"), "precision": 0.0, "recall": 0.0, "f1": 0.0}
 
         try:
             for round_num in range(self.config.num_rounds):
@@ -437,7 +449,8 @@ class BaselineFLMethods:
                     global_weights = self._fedavg_aggregate(cluster_models, cluster_weights)
                     global_model.load_state_dict(global_weights)
 
-                m = self._evaluate_model(global_model, dataset)
+                m = self._maybe_evaluate(global_model, dataset, round_num, last_m)
+                last_m = m
                 accuracies.append(m["accuracy"])
                 losses.append(m["loss"])
                 precisions.append(m["precision"])
@@ -500,6 +513,7 @@ class BaselineFLMethods:
         f1s: List[float] = []
         round_times: List[float] = []
         participating_counts: List[int] = []
+        last_m: Dict[str, float] = {"accuracy": 0.0, "loss": float("inf"), "precision": 0.0, "recall": 0.0, "f1": 0.0}
 
         # template for converting vectors ↔ state_dict
         template_state_dict = global_model.state_dict()
@@ -530,7 +544,8 @@ class BaselineFLMethods:
                     active_count += 1
 
                 if not local_state_dicts:
-                    m = self._evaluate_model(global_model, dataset)
+                    m = self._maybe_evaluate(global_model, dataset, round_num, last_m)
+                    last_m = m
                     accuracies.append(m["accuracy"]); losses.append(m["loss"])
                     precisions.append(m["precision"]); recalls.append(m["recall"]); f1s.append(m["f1"])
                     round_times.append(time.time() - t0); participating_counts.append(0)
@@ -576,7 +591,8 @@ class BaselineFLMethods:
                 global_weights = self._fedavg_aggregate(updated_state_dicts, device_weights)
                 global_model.load_state_dict(global_weights)
 
-                m = self._evaluate_model(global_model, dataset)
+                m = self._maybe_evaluate(global_model, dataset, round_num, last_m)
+                last_m = m
                 accuracies.append(m["accuracy"]); losses.append(m["loss"])
                 precisions.append(m["precision"]); recalls.append(m["recall"]); f1s.append(m["f1"])
                 round_times.append(time.time() - t0); participating_counts.append(active_count)

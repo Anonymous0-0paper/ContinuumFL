@@ -89,7 +89,7 @@ run_quick() {
     # Tiny smoke-test — downloads data (if needed) and runs a few rounds.
     run_experiment "ucihar_quick" "python main.py \
         --dataset ucihar \
-        --max_samples 1000 \
+        --max_samples 10000 \
         --num_devices 10 \
         --num_zones 3 \
         --min_zone_size 2 \
@@ -102,7 +102,7 @@ run_quick() {
 
     run_experiment "speechcommands_quick" "python main.py \
         --dataset speechcommands \
-        --max_samples 500 \
+        --max_samples 5000 \
         --num_devices 10 \
         --num_zones 3 \
         --min_zone_size 2 \

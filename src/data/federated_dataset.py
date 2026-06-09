@@ -100,9 +100,15 @@ class FederatedDataset:
         full_train = torchvision.datasets.CIFAR100(root=self.data_dir, train=True, download=True, transform=transform_train)
         full_test = torchvision.datasets.CIFAR100(root=self.data_dir, train=False, download=True, transform=transform_test)
 
-        # Compute number of samples
-        num_train_samples = min(len(full_train), self.max_samples) if self.max_samples > 0 else len(full_train)
-        num_test_samples = min(len(full_test), self.max_samples) if self.max_samples > 0 else len(full_test)
+        # Compute number of samples — max_samples is a total budget split proportionally
+        if self.max_samples > 0:
+            total = len(full_train) + len(full_test)
+            train_ratio = len(full_train) / total
+            num_train_samples = min(len(full_train), int(self.max_samples * train_ratio))
+            num_test_samples = min(len(full_test), self.max_samples - num_train_samples)
+        else:
+            num_train_samples = len(full_train)
+            num_test_samples = len(full_test)
 
         # Random indices
         train_indices = torch.randperm(len(full_train))[:num_train_samples]
@@ -129,12 +135,18 @@ class FederatedDataset:
 
         if os.path.exists(train_file) and os.path.exists(test_file):
             print("Loading existing FEMNIST data...")
-            with open(train_file, 'rb') as f:
-                train_ds = pickle.load(f)
-            with open(test_file, 'rb') as f:
-                test_ds = pickle.load(f)
-            self.process_femnist(train_ds, test_ds)
-            return
+            try:
+                with open(train_file, 'rb') as f:
+                    train_ds = pickle.load(f)
+                with open(test_file, 'rb') as f:
+                    test_ds = pickle.load(f)
+                self.process_femnist(train_ds, test_ds)
+                return
+            except Exception as exc:
+                print(f"  FEMNIST cache is stale or corrupted ({exc}). Rebuilding cache...")
+                for cache_file in (train_file, test_file):
+                    if os.path.exists(cache_file):
+                        os.remove(cache_file)
 
         print("Downloading FEMNIST dataset...")
         download_config = DownloadConfig(cache_dir=femnist_path)
@@ -145,9 +157,15 @@ class FederatedDataset:
         test_ds = split_ds['test']
 
         with open(train_file, 'wb') as f:
-            pickle.dump(train_ds, f)
+            pickle.dump([
+                {'image': item['image'], 'character': item['character']}
+                for item in train_ds
+            ], f)
         with open(test_file, 'wb') as f:
-            pickle.dump(test_ds, f)
+            pickle.dump([
+                {'image': item['image'], 'character': item['character']}
+                for item in test_ds
+            ], f)
 
         self.process_femnist(train_ds, test_ds)
 
@@ -166,22 +184,34 @@ class FederatedDataset:
         test_ds = split_ds['test']
 
         with open(os.path.join(femnist_path, 'train.pkl'), 'wb') as f:
-            pickle.dump(train_ds, f)
+            pickle.dump([
+                {'image': item['image'], 'character': item['character']}
+                for item in train_ds
+            ], f)
 
         with open(os.path.join(femnist_path, 'test.pkl'), 'wb') as f:
-            pickle.dump(test_ds, f)
+            pickle.dump([
+                {'image': item['image'], 'character': item['character']}
+                for item in test_ds
+            ], f)
 
         self.process_femnist(train_ds, test_ds)
 
     def process_femnist(self, train_ds, test_ds):
         """Process FEMNIST dataset into PyTorch-ready format."""
-        # Limit samples if needed
+        # Limit samples if needed — max_samples is a total budget split proportionally
         if self.max_samples > 0:
-            train_len = len(train_ds)
-            num_samples = min(self.max_samples, train_len)
-            if num_samples < train_len:
-                train_ds = train_ds.select(range(num_samples))
-                test_ds = test_ds.select(range(min(num_samples, len(test_ds))))
+            total = len(train_ds) + len(test_ds)
+            train_ratio = len(train_ds) / total
+            n_train = min(len(train_ds), int(self.max_samples * train_ratio))
+            n_test = min(len(test_ds), self.max_samples - n_train)
+            if n_train < len(train_ds):
+                train_ds = train_ds.select(range(n_train)) if hasattr(train_ds, 'select') else train_ds[:n_train]
+            if n_test < len(test_ds):
+                test_ds = test_ds.select(range(n_test)) if hasattr(test_ds, 'select') else test_ds[:n_test]
+
+        train_ds = list(train_ds)
+        test_ds = list(test_ds)
 
         transform = transforms.Compose([
             transforms.Grayscale(num_output_channels=1),
@@ -191,24 +221,17 @@ class FederatedDataset:
 
         class FEMNISTDataset(Dataset):
             def __init__(self, hf_dataset, transform=None):
-                self.dataset = hf_dataset
-                self.transform = transform
-
-                # Store data and labels for compatibility with FederatedDataset
-                self.data = [item['image'] for item in hf_dataset]
                 self.targets = [item['character'] for item in hf_dataset]
+                if transform is not None:
+                    self.data = torch.stack([transform(item['image']) for item in hf_dataset])
+                else:
+                    self.data = [item['image'] for item in hf_dataset]
 
             def __len__(self):
-                return len(self.dataset)
+                return len(self.targets)
 
             def __getitem__(self, idx):
-                image = self.data[idx]  # This is already a PIL image
-                label = self.targets[idx]
-
-                if self.transform:
-                    image = self.transform(image)  # Apply transform directly
-
-                return image, label
+                return self.data[idx], self.targets[idx]
 
         self.train_data = FEMNISTDataset(train_ds, transform=transform)
         self.test_data = FEMNISTDataset(test_ds, transform=transform)
@@ -297,31 +320,22 @@ class FederatedDataset:
             with open(os.path.join(shakespeare_path, 'test.pkl'), 'rb') as f:
                 test_data = pickle.load(f)
                 self.test_data = self.ShakespeareDataset(test_data, vocab)
-            # Enforce max_samples if requested (trim loaded datasets and index lists)
+            # Enforce max_samples — total budget split proportionally
             if self.max_samples > 0:
-                # Trim train indices and dataset
-                if len(self.train_indices) > self.max_samples:
-                    keep_train = self.train_indices[:self.max_samples]
-                    self.train_indices = keep_train
-                    try:
-                        trimmed_train = train_dataset.select(range(min(len(train_dataset), self.max_samples)))
-                        self.train_data = self.ShakespeareDataset(trimmed_train, vocab)
-                    except Exception:
-                        # If the loaded train_dataset is not a HF dataset with select(), fall back to slicing
-                        if hasattr(train_dataset, '__getitem__'):
-                            trimmed_items = [train_dataset[i] for i in range(min(len(train_dataset), self.max_samples))]
-                            self.train_data = self.ShakespeareDataset({'x': [it[0] for it in trimmed_items], 'y': [it[1] for it in trimmed_items]}, vocab)
-                # Trim test indices and dataset
-                if len(self.test_indices) > self.max_samples:
-                    keep_test = self.test_indices[:self.max_samples]
-                    self.test_indices = keep_test
-                    try:
-                        trimmed_test = test_data.select(range(min(len(test_data), self.max_samples)))
-                        self.test_data = self.ShakespeareDataset(trimmed_test, vocab)
-                    except Exception:
-                        if hasattr(test_data, '__getitem__'):
-                            trimmed_items = [test_data[i] for i in range(min(len(test_data), self.max_samples))]
-                            self.test_data = self.ShakespeareDataset({'x': [it[0] for it in trimmed_items], 'y': [it[1] for it in trimmed_items]}, vocab)
+                n_train = len(train_dataset['x']) if isinstance(train_dataset, dict) else len(train_dataset)
+                n_test = len(test_data['x']) if isinstance(test_data, dict) else len(test_data)
+                total = n_train + n_test
+                train_ratio = n_train / total
+                cap_train = min(n_train, int(self.max_samples * train_ratio))
+                cap_test = min(n_test, self.max_samples - cap_train)
+                if cap_train < n_train:
+                    self.train_indices = self.train_indices[:cap_train]
+                    train_dataset = {'x': train_dataset['x'][:cap_train], 'y': train_dataset['y'][:cap_train]} if isinstance(train_dataset, dict) else train_dataset.select(range(cap_train))
+                    self.train_data = self.ShakespeareDataset(train_dataset, vocab)
+                if cap_test < n_test:
+                    self.test_indices = self.test_indices[:cap_test]
+                    test_data = {'x': test_data['x'][:cap_test], 'y': test_data['y'][:cap_test]} if isinstance(test_data, dict) else test_data.select(range(cap_test))
+                    self.test_data = self.ShakespeareDataset(test_data, vocab)
             return
 
         # Download and process Shakespeare dataset
@@ -369,26 +383,30 @@ class FederatedDataset:
         train_dataset = dataset.select(self.train_indices)
         test_dataset = dataset.select(self.test_indices)
 
-        # Apply max_samples limit if requested (consistent with other dataset handlers)
+        # Apply max_samples limit — total budget split proportionally
         if self.max_samples > 0:
-            num_train_samples = min(len(train_dataset), self.max_samples)
-            num_test_samples = min(len(test_dataset), self.max_samples)
-            if num_train_samples < len(train_dataset):
-                train_dataset = train_dataset.select(range(num_train_samples))
-            if num_test_samples < len(test_dataset):
-                test_dataset = test_dataset.select(range(num_test_samples))
+            total = len(train_dataset) + len(test_dataset)
+            train_ratio = len(train_dataset) / total
+            n_train = min(len(train_dataset), int(self.max_samples * train_ratio))
+            n_test = min(len(test_dataset), self.max_samples - n_train)
+            if n_train < len(train_dataset):
+                train_dataset = train_dataset.select(range(n_train))
+            if n_test < len(test_dataset):
+                test_dataset = test_dataset.select(range(n_test))
 
-        # Save raw train/test texts
+        # Save as plain dicts (not HF Dataset objects) to avoid Arrow cache dependencies
+        train_plain = {'x': train_dataset['x'], 'y': train_dataset['y']}
+        test_plain = {'x': test_dataset['x'], 'y': test_dataset['y']}
         with open(os.path.join(shakespeare_path, 'vocab.pkl'), 'wb') as f:
             pickle.dump(vocab, f)
         with open(os.path.join(shakespeare_path, 'train_indices.pkl'), 'wb') as f:
             pickle.dump(train_indices, f)
         with open(os.path.join(shakespeare_path, 'train.pkl'), 'wb') as f:
-            pickle.dump(train_dataset, f)
+            pickle.dump(train_plain, f)
         with open(os.path.join(shakespeare_path, 'test_indices.pkl'), 'wb') as f:
             pickle.dump(test_indices, f)
         with open(os.path.join(shakespeare_path, 'test.pkl'), 'wb') as f:
-            pickle.dump(test_dataset, f)
+            pickle.dump(test_plain, f)
 
         self.train_data = self.ShakespeareDataset(train_dataset, vocab)
         self.test_data = self.ShakespeareDataset(test_dataset, vocab)
@@ -489,10 +507,12 @@ class FederatedDataset:
         X_te, y_te = data['X_test'], data['y_test']
 
         if self.max_samples > 0:
-            X_tr = X_tr[:self.max_samples]
-            y_tr = y_tr[:self.max_samples]
-            X_te = X_te[:self.max_samples]
-            y_te = y_te[:self.max_samples]
+            total = len(X_tr) + len(X_te)
+            train_ratio = len(X_tr) / total
+            n_train = min(len(X_tr), int(self.max_samples * train_ratio))
+            n_test = min(len(X_te), self.max_samples - n_train)
+            X_tr, y_tr = X_tr[:n_train], y_tr[:n_train]
+            X_te, y_te = X_te[:n_test], y_te[:n_test]
 
         self.train_data = UCIHARDataset(X_tr, y_tr, data['subjects_train'][:len(y_tr)])
         self.test_data = UCIHARDataset(X_te, y_te, data['subjects_test'][:len(y_te)])
@@ -656,14 +676,19 @@ class FederatedDataset:
             def __getitem__(self, idx):
                 return self.specs[idx], self.targets[idx]
 
-        max_s = self.max_samples if self.max_samples > 0 else -1
+        # Speech Commands v0.02: ~84k train, ~10k val — train≈89% of combined
+        if self.max_samples > 0:
+            max_train = int(self.max_samples * 0.89)
+            max_val   = self.max_samples - max_train
+        else:
+            max_train = max_val = -1
         extract_dir = _ensure_extracted(sc_path)
-        tag = "full" if max_s < 0 else max_s
+        tag = "full" if self.max_samples <= 0 else self.max_samples
         train_cache = os.path.join(sc_path, f'train_specs_{tag}.pkl')
         test_cache  = os.path.join(sc_path, f'val_specs_{tag}.pkl')
 
-        train_data = _build_split('train',      train_cache, max_s, extract_dir)
-        test_data  = _build_split('validation', test_cache,  max_s, extract_dir)
+        train_data = _build_split('train',      train_cache, max_train, extract_dir)
+        test_data  = _build_split('validation', test_cache,  max_val,   extract_dir)
 
         self.train_data = SpeechCommandsDataset(train_data)
         self.test_data  = SpeechCommandsDataset(test_data)
@@ -891,10 +916,12 @@ class FederatedDataset:
             return None
         
         return DataLoader(
-            subset, 
-            batch_size=batch_size, 
-            shuffle=is_train, 
-            num_workers=0,  # Set to 0 to avoid issues in Windows
+            subset,
+            batch_size=batch_size,
+            shuffle=is_train,
+            num_workers=4,
+            pin_memory=True,
+            persistent_workers=True,
             drop_last=False
         )
     
@@ -907,7 +934,9 @@ class FederatedDataset:
             dataset,
             batch_size=batch_size,
             shuffle=is_train,
-            num_workers=0,
+            num_workers=4,
+            pin_memory=True,
+            persistent_workers=True,
             drop_last=False
         )
     
