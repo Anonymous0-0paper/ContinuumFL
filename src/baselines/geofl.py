@@ -381,8 +381,14 @@ class GeoFL:
         return result
 
     def evaluate(self) -> Tuple[float, float, float, float, float]:
-        """Evaluate using the current global model. Returns (accuracy, loss, precision, recall, f1)."""
-        sd = self.global_sd
+        """Evaluate using the current global model. Returns (accuracy, loss, precision, recall, f1).
+        Falls back to FedAvg of aggregator models when no upload has reached the server yet."""
+        if self.ever_uploaded:
+            sd = self.global_sd
+        else:
+            # No aggregator has uploaded yet — evaluate on a FedAvg of the current agg models
+            agg_sds = list(self.agg_model.values())
+            sd = fedavg_aggregate(agg_sds, [1.0] * len(agg_sds))
         model = copy.deepcopy(self._template_model)
         model.load_state_dict(sd)
         model = model.to(self._dev)

@@ -74,7 +74,7 @@ class APCFL:
         self.num_rounds: int = getattr(config, "apcfl_num_rounds", config.num_rounds)
         self.local_epochs: int = getattr(config, "apcfl_local_epochs", 1)
         self.batch_size: int = getattr(config, "apcfl_batch_size", 32)
-        self.lr: float = getattr(config, "apcfl_lr", getattr(config, "learning_rate", 0.0001))
+        self.lr: float = getattr(config, "apcfl_lr", getattr(config, "learning_rate", 0.001))
         self.lam: float = getattr(config, "apcfl_lambda", 0.05)
         self.sampling_rate: float = getattr(config, "apcfl_sampling_rate", 0.7)
 
@@ -348,46 +348,62 @@ class APCFL:
             self.cluster_classifiers = new_classifiers
 
     def evaluate(self) -> Tuple[float, float, float, float, float]:
-        """Evaluate the global model. Returns (accuracy, loss, precision, recall, f1)."""
+        """Evaluate using per-sample best-cluster selection (argmin loss over all cluster classifiers).
+        Returns (accuracy, loss, precision, recall, f1)."""
         if not self.cluster_classifiers:
             return 0.0, float("inf"), 0.0, 0.0, 0.0
 
-        model = copy.deepcopy(self._template_model)
-        full_sd = merge_state_dict(self.global_encoder_sd, self.cluster_classifiers[0])
-        model.load_state_dict(full_sd)
-        model = model.to(self._dev)
-        model.eval()
+        # Build one model per cluster classifier
+        models = []
+        for cls_sd in self.cluster_classifiers:
+            m = copy.deepcopy(self._template_model)
+            m.load_state_dict(merge_state_dict(self.global_encoder_sd, cls_sd))
+            m = m.to(self._dev)
+            m.eval()
+            models.append(m)
 
-        criterion = nn.CrossEntropyLoss()
+        criterion_none = nn.CrossEntropyLoss(reduction="none")
         all_preds: List[torch.Tensor] = []
         all_targets: List[torch.Tensor] = []
+        total_loss_sum = 0.0
+        total_samples = 0
         num_classes = 2
+
         try:
             loader = self.dataset.get_global_dataloader(batch_size=64, is_train=False)
-            total_loss, correct, total = 0.0, 0, 0
             with torch.no_grad():
                 for data, target in loader:
                     data, target = data.to(self._dev), target.to(self._dev)
-                    out = model(data)
-                    if isinstance(out, tuple):
-                        out = out[0]
-                    num_classes = out.shape[1]
-                    total_loss += criterion(out, target).item()
-                    pred = out.argmax(1)
-                    correct += pred.eq(target).sum().item()
-                    total += target.size(0)
+                    per_cluster_loss = []
+                    outs = []
+                    for m in models:
+                        out = m(data)
+                        if isinstance(out, tuple):
+                            out = out[0]
+                        num_classes = out.shape[1]
+                        per_cluster_loss.append(criterion_none(out, target))
+                        outs.append(out)
+                    # pick best cluster per sample
+                    stacked_loss = torch.stack(per_cluster_loss, dim=0)  # [K, B]
+                    best_k = stacked_loss.argmin(dim=0)                  # [B]
+                    stacked_out = torch.stack(outs, dim=0)               # [K, B, C]
+                    idx = best_k.view(1, -1, 1).expand(1, -1, num_classes)
+                    best_out = stacked_out.gather(0, idx).squeeze(0)     # [B, C]
+                    pred = best_out.argmax(1)
                     all_preds.append(pred.cpu())
                     all_targets.append(target.cpu())
-            acc = correct / max(total, 1)
-            avg_loss = total_loss / max(len(loader), 1)
+                    total_loss_sum += stacked_loss.gather(0, best_k.unsqueeze(0)).sum().item()
+                    total_samples += target.size(0)
+
             preds_t = torch.cat(all_preds)
             targets_t = torch.cat(all_targets)
+            acc = preds_t.eq(targets_t).float().mean().item()
+            avg_loss = total_loss_sum / max(total_samples, 1)
             precision, recall, f1 = _compute_prf(preds_t, targets_t, num_classes)
         except Exception as e:
             print(f"  AP-CFL evaluate error: {e}")
             acc, avg_loss, precision, recall, f1 = 0.0, float("inf"), 0.0, 0.0, 0.0
 
-        model.train()
         return acc, avg_loss, precision, recall, f1
 
     # ------------------------------------------------------------------

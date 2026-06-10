@@ -27,7 +27,7 @@ DATASET="${DATASET:-femnist}"
 # ┌─────────────────────────────────────────────────────────────────────────────
 # │ BASELINE METHODS
 # └─────────────────────────────────────────────────────────────────────────────
-BASELINE_METHODS=(FedAvg FedProx HierFL ClusterFL IFCA APCfl GeoFL SnapCFL)
+BASELINE_METHODS=(ClusterFL IFCA APCfl GeoFL SnapCFL)
 
 # ┌─────────────────────────────────────────────────────────────────────────────
 # │ FIXED PARAMETERS (shared across all runs)
@@ -36,7 +36,7 @@ NUM_ROUNDS="${NUM_ROUNDS:-200}"
 LOCAL_EPOCHS="${LOCAL_EPOCHS:-5}"
 EVAL_EVERY="${EVAL_EVERY:-5}"
 LEARNING_RATE=0.001
-BATCH_SIZE=32
+BATCH_SIZE=16
 INTRA_ZONE_ALPHA=100
 INTER_ZONE_ALPHA=5.0
 COMPRESSION_RATE=0.10
@@ -66,8 +66,10 @@ ZONE_CONFIGS=(
     "10:5:1:4:10c_5z"
     "50:5:4:15:50c_5z"
     "50:10:3:8:50c_10z"
-    "50:25:1:4:50c_25z"
+    # "50:25:1:4:50c_25z"
 )
+
+
 
 # ┌─────────────────────────────────────────────────────────────────────────────
 # │ FAULT SCENARIOS
@@ -84,15 +86,16 @@ ZONE_CONFIGS=(
 # │     0.20   │  0.10     │ high device + high zone fault
 # │     0.30   │  0.15     │ severe fault scenario
 # └─────────────────────────────────────────────────────────────────────────────
+# Format: "DEVICE_FAIL:ZONE_FAIL:LABEL"
 FAULT_CONFIGS=(
     "0.00:0.00:fault_free"
     "0.05:0.00:dev_low"
-    "0.10:0.00:dev_moderate"
+    # "0.10:0.00:dev_moderate"
     "0.20:0.00:dev_high"
     "0.05:0.02:dev_low__zone_low"
-    "0.10:0.05:dev_moderate__zone_moderate"
+    # "0.10:0.05:dev_moderate__zone_moderate"
     "0.20:0.10:dev_high__zone_high"
-    "0.30:0.15:severe"
+    # "0.30:0.15:severe"
 )
 
 # ┌─────────────────────────────────────────────────────────────────────────────
@@ -169,6 +172,8 @@ run_baselines() {
         --baselines_only
         --run_baselines
         --baseline_methods     "${BASELINE_METHODS[@]}"
+        --enable_early_stopping
+        --early_stopping_patience 10
         --save_results
         --ifca_k               "$num_zones"
     )

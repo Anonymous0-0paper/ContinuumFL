@@ -41,7 +41,7 @@ class IFCA:
         self.k: int              = getattr(config, "ifca_k",               4)
         self.num_rounds: int     = getattr(config, "ifca_num_rounds",      config.num_rounds)
         self.local_steps: int    = getattr(config, "ifca_local_steps",     5)
-        self.lr: float           = getattr(config, "ifca_lr",              0.01)
+        self.lr: float           = getattr(config, "ifca_lr",              getattr(config, "learning_rate", 0.01))
         self.lr_decay: float     = getattr(config, "ifca_lr_decay",        1.0)   # per-round multiplier
         self.batch_size: int     = getattr(config, "ifca_batch_size",      32)
         self.sampling_rate: float = getattr(config, "ifca_sampling_rate",  0.7)
@@ -54,13 +54,12 @@ class IFCA:
 
         self._template_model = global_model
 
-        # Initialise k cluster models with independent random seeds
-        self.cluster_models: List[Dict[str, torch.Tensor]] = []
-        for i in range(self.k):
-            m = copy.deepcopy(global_model)
-            for p in m.parameters():
-                nn.init.normal_(p, mean=0.0, std=0.02)
-            self.cluster_models.append(m.state_dict())
+        # Initialise k cluster models from the global model (warm start).
+        # Random-noise init causes cluster assignments to be meaningless early on
+        # and wastes many rounds escaping the noise basin.
+        self.cluster_models: List[Dict[str, torch.Tensor]] = [
+            copy.deepcopy(global_model.state_dict()) for _ in range(self.k)
+        ]
 
         self._current_lr = self.lr
 

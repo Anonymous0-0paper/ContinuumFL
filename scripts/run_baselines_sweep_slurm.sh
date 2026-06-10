@@ -50,7 +50,7 @@ BASELINE_METHODS=(FedAvg FedProx HierFL ClusterFL IFCA APCfl GeoFL SnapCFL)
 NUM_ROUNDS=200
 LOCAL_EPOCHS=5
 LEARNING_RATE=0.001
-BATCH_SIZE=64
+BATCH_SIZE=32
 INTRA_ZONE_ALPHA=100
 INTER_ZONE_ALPHA=5.0
 COMPRESSION_RATE=0.10
@@ -61,7 +61,7 @@ SPATIAL_REGULARIZATION=0.05
 CORRELATION_THRESHOLD=0.05
 RANDOM_SEED=42
 DEVICE="cuda"
-MAX_SAMPLES=-1
+MAX_SAMPLES=50000
 
 # ┌─────────────────────────────────────────────────────────────────────────────
 # │ SECTION 4 — SWEEP CONFIGS
@@ -72,19 +72,19 @@ ZONE_CONFIGS=(
     "10:5:1:4:10c_5z"
     "50:5:4:15:50c_5z"
     "50:10:3:8:50c_10z"
-    "50:25:1:4:50c_25z"
+    # "50:25:1:4:50c_25z"
 )
 
 # Format: "DEVICE_FAIL:ZONE_FAIL:LABEL"
 FAULT_CONFIGS=(
     "0.00:0.00:fault_free"
     "0.05:0.00:dev_low"
-    "0.10:0.00:dev_moderate"
+    # "0.10:0.00:dev_moderate"
     "0.20:0.00:dev_high"
     "0.05:0.02:dev_low__zone_low"
-    "0.10:0.05:dev_moderate__zone_moderate"
+    # "0.10:0.05:dev_moderate__zone_moderate"
     "0.20:0.10:dev_high__zone_high"
-    "0.30:0.15:severe"
+    # "0.30:0.15:severe"
 )
 
 # ┌─────────────────────────────────────────────────────────────────────────────

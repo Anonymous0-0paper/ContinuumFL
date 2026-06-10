@@ -666,7 +666,7 @@ class FederatedDataset:
 
         class SpeechCommandsDataset(Dataset):
             def __init__(self, data_dict):
-                self.specs = data_dict['specs']       # list of (1,64,101) tensors
+                self.specs = torch.stack(data_dict['specs'])  # (N,1,64,101) contiguous tensor
                 self.targets = data_dict['labels']    # list of ints
                 self.speakers = data_dict['speakers']
 
@@ -904,40 +904,51 @@ class FederatedDataset:
         self.device_datasets = device_datasets
         return device_datasets
     
-    def get_device_dataloader(self, device_id: str, batch_size: int = 32, 
-                            is_train: bool = True) -> Optional[DataLoader]:
+    def _dataloader_workers(self) -> int:
+        """Return 0 for already-tensorized in-memory datasets, else scale with CPU count."""
+        in_memory = {'shakespeare', 'ucihar'}
+        if self.dataset_name.lower() in in_memory:
+            return 0
+        return min(8, os.cpu_count()-2 or 4)
+
+    def get_device_dataloader(self, device_id: str, batch_size: int = 32,
+                              is_train: bool = True) -> Optional[DataLoader]:
         """Get DataLoader for a specific device"""
         if device_id not in self.device_datasets:
             return None
-        
+
         train_subset, test_subset = self.device_datasets[device_id]
         subset = train_subset if is_train else test_subset
         if subset is None or len(subset) == 0:
             return None
-        
+
+        nw = self._dataloader_workers()
         return DataLoader(
             subset,
             batch_size=batch_size,
             shuffle=is_train,
-            num_workers=4,
-            pin_memory=True,
-            persistent_workers=True,
-            drop_last=False
+            num_workers=nw,
+            pin_memory=torch.cuda.is_available(),
+            persistent_workers=nw > 0,
+            prefetch_factor=4 if nw > 0 else None,
+            drop_last=False,
         )
-    
-    def get_global_dataloader(self, batch_size: int = 32, 
-                            is_train: bool = True) -> DataLoader:
+
+    def get_global_dataloader(self, batch_size: int = 32,
+                              is_train: bool = True) -> DataLoader:
         """Get DataLoader for global evaluation"""
         dataset = self.train_data if is_train else self.test_data
-        
+
+        nw = self._dataloader_workers()
         return DataLoader(
             dataset,
             batch_size=batch_size,
             shuffle=is_train,
-            num_workers=4,
-            pin_memory=True,
-            persistent_workers=True,
-            drop_last=False
+            num_workers=nw,
+            pin_memory=torch.cuda.is_available(),
+            persistent_workers=nw > 0,
+            prefetch_factor=4 if nw > 0 else None,
+            drop_last=False,
         )
     
     def analyze_data_distribution(self, zones: dict[str, Zone]) -> Dict[str, Any]:
