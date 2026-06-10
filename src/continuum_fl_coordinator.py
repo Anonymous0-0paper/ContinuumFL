@@ -166,9 +166,9 @@ class ContinuumFLCoordinator:
         self.global_model = ModelFactory.create_model(self.config)
         
         # Move model to appropriate device
-        if self.config.device == 'cuda' and torch.cuda.is_available():
-            self.global_model = self.global_model.cuda()
-            self.logger.info(f"Model moved to GPU: {torch.cuda.get_device_name(0)}")
+        if self.config.device.startswith('cuda') and torch.cuda.is_available():
+            self.global_model = self.global_model.to(self.config.device)
+            self.logger.info(f"Model moved to GPU: {torch.cuda.get_device_name(self.config.device)}")
         else:
             self.logger.info("Model will use CPU")
         
@@ -200,7 +200,7 @@ class ContinuumFLCoordinator:
     
     def _setup_compute_device(self):
         """Setup and verify compute device"""
-        if self.config.device == 'cuda':
+        if self.config.device.startswith('cuda'):
             if torch.cuda.is_available():
                 device_count = torch.cuda.device_count()
                 current_device = torch.cuda.current_device()
@@ -508,7 +508,7 @@ class ContinuumFLCoordinator:
 
         from concurrent.futures import ThreadPoolExecutor
 
-        if self.config.device == 'cuda':
+        if self.config.device.startswith('cuda'):
             max_workers = len(self.zones)
         else:
             max_workers = min(len(self.zones), os.cpu_count())
@@ -578,13 +578,13 @@ class ContinuumFLCoordinator:
         all_targets = []
 
         criterion = nn.CrossEntropyLoss()
-        if self.config.device == 'cuda' and torch.cuda.is_available():
-            criterion = criterion.cuda()
+        if self.config.device.startswith('cuda') and torch.cuda.is_available():
+            criterion = criterion.to(self.config.device)
 
         with torch.no_grad():
             for data, target in test_dataloader:
-                if self.config.device == 'cuda' and torch.cuda.is_available():
-                    data, target = data.cuda(), target.cuda()
+                if self.config.device.startswith('cuda') and torch.cuda.is_available():
+                    data, target = data.to(self.config.device), target.to(self.config.device)
 
                 output = self.global_model(data)
                 if isinstance(output, tuple):
@@ -676,8 +676,8 @@ class ContinuumFLCoordinator:
         
         with torch.no_grad():
             for data, labels in zip(data_list, labels_list):
-                if self.config.device == 'cuda' and torch.cuda.is_available():
-                    data, labels = data.cuda(), labels.cuda()
+                if self.config.device.startswith('cuda') and torch.cuda.is_available():
+                    data, labels = data.to(self.config.device), labels.to(self.config.device)
                 
                 output = self.global_model(data)
                 

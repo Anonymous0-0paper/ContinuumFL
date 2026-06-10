@@ -89,7 +89,7 @@ class SnapCFL:
         )
 
         self._dev = "cpu"
-        if getattr(config, "device", "cpu") == "cuda" and torch.cuda.is_available():
+        if getattr(config, "device", "cpu") .startswith("cuda") and torch.cuda.is_available():
             self._dev = "cuda"
 
         self._template_model = global_model
@@ -508,7 +508,7 @@ class SnapCFL:
         except Exception as e:
             print(f"  SnapCFL FedAvg local train error: {e}")
             return None
-        if self._dev == "cuda":
+        if self._dev.startswith("cuda"):
             model = model.cpu()
         return model.state_dict()
 
@@ -539,7 +539,7 @@ class SnapCFL:
         except Exception as e:
             print(f"  SnapCFL FedProx local train error: {e}")
             return None
-        if self._dev == "cuda":
+        if self._dev.startswith("cuda"):
             model = model.cpu()
         return model.state_dict()
 

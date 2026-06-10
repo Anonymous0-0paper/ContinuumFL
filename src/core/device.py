@@ -117,9 +117,9 @@ class EdgeDevice:
         # Initialize local model with global weights
         self.local_model.load_state_dict(global_model.state_dict())
 
-        use_cuda = device == 'cuda' and torch.cuda.is_available()
+        use_cuda = device.startswith('cuda') and torch.cuda.is_available()
         if use_cuda:
-            self.local_model = self.local_model.cuda()
+            self.local_model = self.local_model.to(device)
         else:
             self.local_model = self.local_model.cpu()
             device = 'cpu'

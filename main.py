@@ -197,8 +197,7 @@ def parse_arguments():
     
     # System options
     parser.add_argument('--device', type=str, default='cuda',
-                       choices=['cuda', 'cpu'],
-                       help='Device to use for training')
+                       help='Device to use for training (e.g. cuda, cuda:0, cpu)')
     parser.add_argument('--random_seed', type=int, default=42,
                        help='Random seed for reproducibility')
     parser.add_argument('--config_file', type=str, default=None,

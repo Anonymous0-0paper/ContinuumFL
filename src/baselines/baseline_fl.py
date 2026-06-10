@@ -728,8 +728,8 @@ class BaselineFLMethods:
 
         with torch.no_grad():
             for data, target in test_dataloader:
-                if device == 'cuda':
-                    data, target = data.cuda(), target.cuda()
+                if device.startswith('cuda'):
+                    data, target = data.to(device), target.to(device)
                 if self.config.dataset_name == 'shakespeare':
                     out, _ = model(data)
                 else:
@@ -755,23 +755,23 @@ class BaselineFLMethods:
         
         # Move model to appropriate device
         device = self.config.device
-        if device == 'cuda' and torch.cuda.is_available():
-            model = model.cuda()
+        if device.startswith('cuda') and torch.cuda.is_available():
+            model = model.to(device)
         else:
             model = model.cpu()
             device = 'cpu'
-        
+
         model.train()
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
         criterion = nn.CrossEntropyLoss()
-        use_cuda = device == 'cuda'
+        use_cuda = device.startswith('cuda')
         scaler = torch.amp.GradScaler('cuda') if use_cuda else None
 
         try:
             for epoch in range(epochs):
                 for data, target in dataloader:
                     if use_cuda:
-                        data, target = data.cuda(non_blocking=True), target.cuda(non_blocking=True)
+                        data, target = data.to(device, non_blocking=True), target.to(device, non_blocking=True)
 
                     optimizer.zero_grad()
                     if use_cuda:
@@ -808,10 +808,10 @@ class BaselineFLMethods:
         if dataloader is None or len(dataloader) == 0:
             return {"success": False}
         
-        use_cuda = self.config.device == 'cuda' and torch.cuda.is_available()
+        use_cuda = self.config.device.startswith('cuda') and torch.cuda.is_available()
         if use_cuda:
-            model = model.cuda()
-            global_weights = {k: v.cuda() for k, v in global_weights.items()}
+            model = model.to(self.config.device)
+            global_weights = {k: v.to(self.config.device) for k, v in global_weights.items()}
         model.train()
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
         criterion = nn.CrossEntropyLoss()
@@ -889,8 +889,8 @@ class BaselineFLMethods:
     def _evaluate_model(self, model: nn.Module, dataset: Any) -> Dict[str, float]:
         """Evaluate model on test dataset. Returns accuracy, loss, precision, recall, f1."""
         device = self.config.device
-        if device == 'cuda' and torch.cuda.is_available():
-            model = model.cuda()
+        if device.startswith('cuda') and torch.cuda.is_available():
+            model = model.to(device)
         else:
             model = model.cpu()
             device = 'cpu'
@@ -902,16 +902,16 @@ class BaselineFLMethods:
         all_preds: List[torch.Tensor] = []
         all_targets: List[torch.Tensor] = []
         criterion = nn.CrossEntropyLoss()
-        if device == 'cuda':
-            criterion = criterion.cuda()
+        if device.startswith('cuda'):
+            criterion = criterion.to(device)
         num_classes = 2  # fallback; updated inside loop
 
         try:
             test_dataloader = dataset.get_global_dataloader(batch_size=64, is_train=False)
             with torch.no_grad():
                 for data, target in test_dataloader:
-                    if device == 'cuda':
-                        data, target = data.cuda(), target.cuda()
+                    if device.startswith('cuda'):
+                        data, target = data.to(device), target.to(device)
                     output = model(data)
                     if isinstance(output, tuple):
                         output = output[0]

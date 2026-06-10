@@ -127,7 +127,7 @@ class GeoFL:
 
         # Compute device
         self._dev = "cpu"
-        if getattr(config, "device", "cpu") == "cuda" and torch.cuda.is_available():
+        if getattr(config, "device", "cpu") .startswith("cuda") and torch.cuda.is_available():
             self._dev = "cuda"
 
         # Build zone → device mapping
@@ -300,7 +300,7 @@ class GeoFL:
             print(f"  GeoFL local_update error ({client_id}): {e}")
             return None
 
-        if self._dev == "cuda":
+        if self._dev.startswith("cuda"):
             model = model.cpu()
         return model.state_dict()
 

@@ -80,7 +80,7 @@ class APCFL:
 
         # Compute device
         self._dev = "cpu"
-        if getattr(config, "device", "cpu") == "cuda" and torch.cuda.is_available():
+        if getattr(config, "device", "cpu") .startswith("cuda") and torch.cuda.is_available():
             self._dev = "cuda"
 
         # --- Server state ---
@@ -208,8 +208,8 @@ class APCFL:
             for k, v in self.global_encoder_sd.items()
         }
 
-        if self._dev == "cuda":
-            local_model = local_model.cuda()
+        if self._dev.startswith("cuda"):
+            local_model = local_model.to(self._dev)
 
         local_model.train()
         optimizer = torch.optim.SGD(local_model.parameters(), lr=self.lr)
@@ -241,7 +241,7 @@ class APCFL:
             print(f"  AP-CFL local_update error for {client_id}: {e}")
             return None
 
-        if self._dev == "cuda":
+        if self._dev.startswith("cuda"):
             local_model = local_model.cpu()
 
         updated_sd = local_model.state_dict()

@@ -49,7 +49,7 @@ class IFCA:
         self.weight_sharing: bool = getattr(config, "ifca_weight_sharing", False)
 
         self._dev = "cpu"
-        if getattr(config, "device", "cpu") == "cuda" and torch.cuda.is_available():
+        if getattr(config, "device", "cpu") .startswith("cuda") and torch.cuda.is_available():
             self._dev = "cuda"
 
         self._template_model = global_model
@@ -255,7 +255,7 @@ class IFCA:
                 print(f"  IFCA local_update error for {client_id}: {e}")
                 return None
 
-            if self._dev == "cuda":
+            if self._dev.startswith("cuda"):
                 model = model.cpu()
             return {"type": "model", "state_dict": model.state_dict()}
 

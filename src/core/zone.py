@@ -233,7 +233,7 @@ class Zone:
                     f"returned no update (success={res_dict.get('success') if isinstance(res_dict, dict) else 'N/A'})"
                 )
 
-        if comp_device == 'cuda':
+        if comp_device.startswith('cuda'):
             # CUDA kernels serialize across threads — run sequentially to avoid overhead
             for dev_arg in device_args:   # FIX: was `for args in device_args`
                 _process_result(run_training(dev_arg))
