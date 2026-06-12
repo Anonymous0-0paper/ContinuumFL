@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
 #  ContinuumFL — Baselines sweep (no SLURM)
-#
+# 
 #  Runs all baseline methods across:
 #    • 5 zone configs  (clients × zones)
 #    • 8 fault scenarios
@@ -22,12 +22,12 @@ set -euo pipefail
 # │ DATASET — one line to change:
 # │   ucihar | femnist | cifar100 | shakespeare | speechcommands
 # └─────────────────────────────────────────────────────────────────────────────
-DATASET="${DATASET:-femnist}"
+DATASET="${DATASET:-speechcommands}"
 
 # ┌─────────────────────────────────────────────────────────────────────────────
 # │ BASELINE METHODS
 # └─────────────────────────────────────────────────────────────────────────────
-BASELINE_METHODS=(ClusterFL IFCA APCfl GeoFL SnapCFL)
+BASELINE_METHODS=(IFCA APCfl GeoFL)
 
 # ┌─────────────────────────────────────────────────────────────────────────────
 # │ FIXED PARAMETERS (shared across all runs)
@@ -47,7 +47,7 @@ SPATIAL_REGULARIZATION=0.05
 CORRELATION_THRESHOLD=0.05
 RANDOM_SEED=42
 DEVICE="cuda"
-MAX_SAMPLES=50000
+MAX_SAMPLES=70000
 
 # ┌─────────────────────────────────────────────────────────────────────────────
 # │ ZONE CONFIGS
@@ -63,9 +63,9 @@ MAX_SAMPLES=50000
 # └─────────────────────────────────────────────────────────────────────────────
 ZONE_CONFIGS=(
     # "10:2:3:6:10c_2z"
-    # "10:5:1:4:10c_5z"
-    "50:5:4:15:50c_5z"
-    "50:10:3:8:50c_10z"
+    "10:5:1:4:10c_5z"
+    # "50:5:4:15:50c_5z"
+    # "50:10:3:8:50c_10z"
     # "50:25:1:4:50c_25z"
 )
 

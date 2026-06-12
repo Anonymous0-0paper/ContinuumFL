@@ -26,7 +26,7 @@
 #   ./run_zone_sweep.sh femnist 200
 # ─────────────────────────────────────────────────────────────────────────────
 
-DATASET=${1:-femnist}
+DATASET=${1:-cifar100}
 NUM_ROUNDS=${2:-200}
 INTRA_ALPHA=100
 INTER_ALPHA=5.0
@@ -54,11 +54,11 @@ ES_FLAGS="--enable_early_stopping \
 CONFIGS=(
     "10:2:3:6"      #  10 clients, 2 zones  — coarse (5 dev/zone avg)
     "10:5:1:4"      #  10 clients, 5 zones  — fine   (2 dev/zone avg)
-    "20:4:3:8"      #  20 clients, 4 zones  — coarse (5 dev/zone avg)
-    "20:10:1:4"     #  20 clients, 10 zones — fine   (2 dev/zone avg)
+    # "20:4:3:8"      #  20 clients, 4 zones  — coarse (5 dev/zone avg)
+    # "20:10:1:4"     #  20 clients, 10 zones — fine   (2 dev/zone avg)
     "50:5:4:15"     #  50 clients, 5 zones  — BEST BASELINE (10 dev/zone avg)
     "50:10:3:8"     #  50 clients, 10 zones — finer  (5 dev/zone avg)
-    "50:25:1:4"     #  50 clients, 25 zones — finest (2 dev/zone avg)
+    # "50:25:1:4"     #  50 clients, 25 zones — finest (2 dev/zone avg)
 )
 
 echo "=================================================================="
@@ -97,6 +97,7 @@ for CFG in "${CONFIGS[@]}"; do
 
     python main.py \
         --dataset          "$DATASET" \
+        --max_samples       70000 \
         --num_devices      $NUM_DEVICES \
         --num_zones        $NUM_ZONES \
         --min_zone_size    $MIN_ZONE \
@@ -106,6 +107,7 @@ for CFG in "${CONFIGS[@]}"; do
         --inter_zone_alpha $INTER_ALPHA \
         --learning_rate    $LEARNING_RATE \
         --compression_rate $COMP_RATE \
+        --batch_size       64 \
         $ES_FLAGS \
         2>&1 | tee "$LOG_FILE"
 

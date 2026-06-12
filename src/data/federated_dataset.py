@@ -442,8 +442,21 @@ class FederatedDataset:
         extract_dir = os.path.join(har_path, 'extracted')
         if not os.path.exists(extract_dir):
             print("Extracting UCI HAR zip...")
-            with zipfile.ZipFile(zip_path, 'r') as zf:
-                zf.extractall(extract_dir)
+            try:
+                with zipfile.ZipFile(zip_path, 'r') as zf:
+                    zf.extractall(extract_dir)
+            except zipfile.BadZipFile:
+                print("Downloaded file is not a valid zip — deleting and re-downloading...")
+                os.remove(zip_path)
+                url = "https://archive.ics.uci.edu/ml/machine-learning-databases/00240/UCI%20HAR%20Dataset.zip"
+                print(f"Re-downloading UCI HAR from {url} ...")
+                r = requests.get(url, stream=True)
+                r.raise_for_status()
+                with open(zip_path, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                with zipfile.ZipFile(zip_path, 'r') as zf:
+                    zf.extractall(extract_dir)
 
         root = os.path.join(extract_dir, 'UCI HAR Dataset')
 
@@ -909,7 +922,7 @@ class FederatedDataset:
         in_memory = {'shakespeare', 'ucihar'}
         if self.dataset_name.lower() in in_memory:
             return 0
-        return min(8, os.cpu_count()-2 or 4)
+        return min(2, os.cpu_count()-1 or 1)
 
     def get_device_dataloader(self, device_id: str, batch_size: int = 32,
                               is_train: bool = True) -> Optional[DataLoader]:
