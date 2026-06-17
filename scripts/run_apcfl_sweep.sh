@@ -1,19 +1,16 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-#  ContinuumFL — Baselines sweep (no SLURM)
-# 
-#  Runs all baseline methods across:
-#    • 5 zone configs  (clients × zones)
-#    • 8 fault scenarios
+#  ContinuumFL — APCfl sweep (no SLURM)
 #
-#  Each combination → its own folder:
-#    results/<RUN_NAME>/zones_<clients>c_<zones>z/<SCENARIO>/baselines/<METHOD>_*/
-#    results/<RUN_NAME>/fault_<devF>d_<zoneF>z/<SCENARIO>/baselines/<METHOD>_*/
+#  Runs a single baseline method across:
+#    • 4 zone configs  (clients × zones)
+#    • 4 fault scenarios
 #
 #  Usage:
-#    bash scripts/run_baselines_sweep.sh              # run everything
-#    DRY_RUN=true bash scripts/run_baselines_sweep.sh # print commands only
-#    DATASET=femnist bash scripts/run_baselines_sweep.sh
+#    bash scripts/run_apcfl_sweep.sh                        # run APCfl (default)
+#    METHOD=IFCA bash scripts/run_apcfl_sweep.sh            # run a different method
+#    DRY_RUN=true bash scripts/run_apcfl_sweep.sh           # print commands only
+#    DATASET=femnist bash scripts/run_apcfl_sweep.sh
 # ═══════════════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
@@ -22,12 +19,14 @@ set -euo pipefail
 # │ DATASET — one line to change:
 # │   ucihar | femnist | cifar100 | shakespeare | speechcommands
 # └─────────────────────────────────────────────────────────────────────────────
-DATASET="${DATASET:-femnist}"
+DATASET="${DATASET:-speechcommands}"
 
 # ┌─────────────────────────────────────────────────────────────────────────────
-# │ BASELINE METHODS
+# │ BASELINE METHOD — override with METHOD=<name>
+# │   IFCA | APCfl | GeoFL
 # └─────────────────────────────────────────────────────────────────────────────
-BASELINE_METHODS=(IFCA APCfl GeoFL ClusterFL)
+METHOD="${METHOD:-APCfl}"
+BASELINE_METHODS=("$METHOD")
 
 # ┌─────────────────────────────────────────────────────────────────────────────
 # │ FIXED PARAMETERS (shared across all runs)
@@ -52,14 +51,6 @@ MAX_SAMPLES=70000
 # ┌─────────────────────────────────────────────────────────────────────────────
 # │ ZONE CONFIGS
 # │   Format: "NUM_DEVICES:NUM_ZONES:MIN_ZONE_SIZE:MAX_ZONE_SIZE:LABEL"
-# │
-# │   Clients │ Zones │ Avg devices/zone │ Notes
-# │   ────────┼───────┼──────────────────┼────────────────────────────────────
-# │      10   │   2   │       5          │ small scale, coarse zoning
-# │      10   │   5   │       2          │ small scale, fine zoning
-# │      50   │   5   │      10          │ BEST from non-IID comparison
-# │      50   │   10  │       5          │ larger-scale fine zoning
-# │      50   │   25  │       2          │ very fine zoning, edge case
 # └─────────────────────────────────────────────────────────────────────────────
 ZONE_CONFIGS=(
     "10:2:3:6:10c_2z"
@@ -69,24 +60,10 @@ ZONE_CONFIGS=(
     # "50:25:1:4:50c_25z"
 )
 
-
-
 # ┌─────────────────────────────────────────────────────────────────────────────
 # │ FAULT SCENARIOS
 # │   Format: "DEVICE_FAIL:ZONE_FAIL:LABEL"
-# │
-# │   dev_fail │ zone_fail │ Notes
-# │   ─────────┼───────────┼───────────────────────────────────────────────────
-# │     0.00   │  0.00     │ fault-free baseline
-# │     0.05   │  0.00     │ low device fault, no zone fault
-# │     0.10   │  0.00     │ moderate device fault, no zone fault
-# │     0.20   │  0.00     │ high device fault, no zone fault
-# │     0.05   │  0.02     │ low device + low zone fault  (default values)
-# │     0.10   │  0.05     │ moderate device + moderate zone fault
-# │     0.20   │  0.10     │ high device + high zone fault
-# │     0.30   │  0.15     │ severe fault scenario
 # └─────────────────────────────────────────────────────────────────────────────
-# Format: "DEVICE_FAIL:ZONE_FAIL:LABEL"
 FAULT_CONFIGS=(
     "0.00:0.00:fault_free"
     "0.05:0.00:dev_low"
@@ -103,7 +80,7 @@ FAULT_CONFIGS=(
 # └─────────────────────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-RUN_NAME="baselines_sweep_${DATASET}_$(date +%Y%m%d_%H%M%S)"
+RUN_NAME="${METHOD}_sweep_${DATASET}_$(date +%Y%m%d_%H%M%S)"
 RESULTS_ROOT="$PROJECT_ROOT/results/$RUN_NAME"
 LOG_ROOT="$PROJECT_ROOT/logs/$RUN_NAME"
 CHECKPOINT_ROOT="$PROJECT_ROOT/checkpoints/$RUN_NAME"
@@ -207,9 +184,9 @@ TOTAL=$(( TOTAL_ZONE + TOTAL_FAULT ))
 IDX=0
 
 echo "════════════════════════════════════════════════════════════"
-echo "  ContinuumFL — Baselines sweep (no SLURM)"
+echo "  ContinuumFL — ${METHOD} sweep (no SLURM)"
 echo "  Dataset  : $DATASET"
-echo "  Methods  : ${BASELINE_METHODS[*]}"
+echo "  Method   : $METHOD"
 echo "  Zone configs  : $TOTAL_ZONE"
 echo "  Fault configs : $TOTAL_FAULT"
 echo "  Total runs    : $TOTAL"
@@ -268,20 +245,4 @@ echo ""
 echo "════════════════════════════════════════════════════════════"
 echo "  ✅ Sweep complete."
 echo "  Results → $RESULTS_ROOT"
-echo ""
-echo "  Folder structure:"
-echo "    $RESULTS_ROOT/"
-echo "    ├── zones_10c_2z/baselines/<METHOD>_*/metrics.csv"
-echo "    ├── zones_10c_5z/baselines/<METHOD>_*/metrics.csv"
-echo "    ├── zones_50c_5z/baselines/<METHOD>_*/metrics.csv"
-echo "    ├── zones_50c_10z/baselines/<METHOD>_*/metrics.csv"
-echo "    ├── zones_50c_25z/baselines/<METHOD>_*/metrics.csv"
-echo "    ├── fault_fault_free/baselines/<METHOD>_*/metrics.csv"
-echo "    ├── fault_dev_low/..."
-echo "    ├── fault_dev_moderate/..."
-echo "    ├── fault_dev_high/..."
-echo "    ├── fault_dev_low__zone_low/..."
-echo "    ├── fault_dev_moderate__zone_moderate/..."
-echo "    ├── fault_dev_high__zone_high/..."
-echo "    └── fault_severe/..."
 echo "════════════════════════════════════════════════════════════"
