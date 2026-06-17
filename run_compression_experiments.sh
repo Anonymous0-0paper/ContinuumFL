@@ -6,13 +6,13 @@
 #   early_stopping   = ON   → patience 20 rounds, min_delta 0.0001
 # Only --compression_rate is swept across runs.
 
-DATASET=${1:-femnist}
+DATASET=${1:-speechcommands}  # default dataset if none specified
 NUM_ROUNDS=${2:-200}
 NUM_DEVICES=50
 NUM_ZONES=5
 INTRA_ALPHA=100   # best value: intra-zone near-IID
 INTER_ALPHA=5.0   # best value: moderate non-IID (composite-score #1 from compare_noniid_results.py)
-RESULTS_DIR="./results/compression_sweep"
+RESULTS_DIR="./results/${DATASET}_compression_sweep"
 
 mkdir -p "$RESULTS_DIR"
 
@@ -47,7 +47,7 @@ echo "========================================================"
 
 for RATE in "${COMP_RATES[@]}"; do
     COMP_PCT=$(python3 -c "print(int(round(${RATE}*100)))")
-    EXP_NAME="compression_rate${RATE}"
+    EXP_NAME="${DATASET}_compression_rate${RATE}"
     LOG_FILE="$RESULTS_DIR/${EXP_NAME}.log"
 
     echo ""
@@ -76,6 +76,6 @@ done
 
 echo ""
 echo "========================================================"
-echo "All compression experiments finished."
+echo "All $DATASET compression experiments finished."
 echo "Results in: $RESULTS_DIR"
 echo "========================================================"

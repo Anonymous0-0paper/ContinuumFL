@@ -27,7 +27,7 @@ DATASET="${DATASET:-femnist}"
 # ┌─────────────────────────────────────────────────────────────────────────────
 # │ BASELINE METHODS
 # └─────────────────────────────────────────────────────────────────────────────
-BASELINE_METHODS=(IFCA APCfl GeoFL ClusterFL)
+BASELINE_METHODS=(IFCA APCfl SnapCFL GeoFL ClusterFL)
 
 # ┌─────────────────────────────────────────────────────────────────────────────
 # │ FIXED PARAMETERS (shared across all runs)
